@@ -37,7 +37,7 @@ Examples
   → Corresponding Vietnamese translation.
 
 Collocations
-one collocation or common pattern per line (3–5 items)
+one collocation or common pattern per line (3–5 items with • bullet points)
 
 Usage
 common usage context • style • typical users (in Vietnamese)
