@@ -7,9 +7,29 @@ import { cronLogger } from './lib/logger';
 const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 const CHAT_ID = env.TELEGRAM_CHAT_ID;
 
+function isWithinWorkingHours(): boolean {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const hour = now.getHours();
+
+  // Check if it's Monday (1) to Friday (5)
+  const isWeekday = day >= 1 && day <= 5;
+
+  // Check if it's between 9 AM (9) and 6 PM (18)
+  const isWorkingHour = hour >= 9 && hour < 18;
+
+  return isWeekday && isWorkingHour;
+}
+
 export async function sendRandomCard() {
   try {
     cronLogger.info('Cronjob triggered');
+
+    // Check if within working hours
+    if (!isWithinWorkingHours()) {
+      cronLogger.debug('Skipped (outside working hours: Mon-Fri 9AM-6PM)');
+      return;
+    }
 
     // Random probability to send a card
     const shouldSend = Math.random() < PROBABILITIES.SEND_CARD;
