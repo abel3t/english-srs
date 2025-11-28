@@ -26,7 +26,7 @@ MUST return EXACTLY and FULLY the following sections, do not omit any section, n
 
 **${q.trim().toLowerCase()}** ${q.includes(' ') ? '' : '(part of speech in English) '}
 
-Here is a Vietnamese definition from Dictionary (secondary meaning if applicable)
+Here is a short Vietnamese definition from Dictionary (secondary meaning if applicable)
 ${q.includes(' ') ? '' : 'IPA: /standard American pronunciation/'}
 ${q.includes(' ') ? '' : 'Synonyms: synonyms (2–3 words) • Antonyms: antonyms (1–2 words)'}
 
