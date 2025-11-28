@@ -7,12 +7,13 @@ export const logger = pino({
         target: 'pino-pretty',
         options: {
           colorize: true,
-          translateTime: 'HH:MM:ss',
+          translateTime: 'SYS:yyyy-mm-dd HH:MM:ss',
           ignore: 'pid,hostname',
           singleLine: false
         }
       }
-    : undefined
+    : undefined,
+  timestamp: () => `,"time":"${new Date().toLocaleString('en-US', { timeZone: 'Asia/Saigon' })}"`
 });
 
 // Child loggers for different modules
