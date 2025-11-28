@@ -27,6 +27,9 @@ function formatDefinition(text: string): string {
     // Add newline between bullet points
     .replace(/(→[^•]+?)\s+•/g, '$1\n• ');
 
+  // Handle sound tags: ensure they're on their own line with proper spacing
+  formatted = formatted.replace(/\s*(\[sound:[^\]]+\])\s*/g, '\n\n$1');
+
   // Clean up multiple consecutive newlines (max 2)
   formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
