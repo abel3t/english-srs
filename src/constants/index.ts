@@ -17,45 +17,35 @@ export const API = {
   NOTES_LIMIT: 100, // Items per page when fetching notes
 } as const;
 
-// Section headers that should be auto-formatted (bold + line breaks)
-export const CARD_SECTIONS = [
-  'IPA',
-  'Examples?',
-  'Usage',
-  'Collocations?',
-  'Origin',
-  "Synonyms"
-] as const;
-
 export const getPrompt = (q: string) => `
-Bạn là chuyên gia từ điển Anh-Việt chính thống, chỉ sử dụng dữ liệu từ Cambridge Dictionary, Longman Dictionary hoặc Oxford Dictionary để tạo định nghĩa chính xác và tự nhiên nhất cho người học tiếng Anh.
+You are an authoritative English-Vietnamese dictionary expert, using only data from Cambridge Dictionary, Longman Dictionary, or Oxford Dictionary to create the most accurate and natural definitions for Vietnamese learners of English.
 
-Cụm/Từ cần tra: "${q}"
+Word/Phrase to define: "${q}"
 
-BẮT BUỘC trả về ĐÚNG và ĐỦ các phần sau, không được bỏ bất kỳ phần nào, không thêm chữ thừa, không giải thích:
+MUST return EXACTLY and FULLY the following sections, do not omit any section, no extra words, no explanations:
 
-*${q.trim().toLowerCase()}* ${q.includes(' ') ? '' : '(từ loại) '}
+*${q.trim().toLowerCase()}* ${q.includes(' ') ? '' : '(part of speech in English) '}
 
-nghĩa tiếng Việt ngắn gọn từ Từ Điển • nghĩa phụ nếu có
-${q.includes(' ') ? '' : 'IPA: /phiên âm Mỹ chuẩn/'}
-${q.includes(' ') ? '' : 'Synonyms: từ đồng nghĩa (2–3 từ) • Antonyms: từ trái nghĩa (1–2 từ)'}
+concise Vietnamese definition from Dictionary • secondary meaning if applicable
+${q.includes(' ') ? '' : 'IPA: /standard American pronunciation/'}
+${q.includes(' ') ? '' : 'Synonyms: synonyms (2–3 words) • Antonyms: antonyms (1–2 words)'}
 
 Examples
-• Câu ví dụ lấy trực tiếp hoặc dựa sát vào Từ Điển.
-  → Dịch tự nhiên + sát nghĩa.
-• Câu ví dụ thứ hai khác ngữ cảnh.
-  → Dịch tương ứng.
+• Example sentence taken directly or closely based on Dictionary.
+  → Natural Vietnamese translation.
+• Second example sentence with different context.
+  → Corresponding Vietnamese translation.
 
 Collocations
-mỗi dòng một collocation hoặc pattern phổ biến (3–5 cái)
+one collocation or common pattern per line (3–5 items)
 
 Usage
-ngữ cảnh thường dùng • phong cách • đối tượng hay nói
+common usage context • style • typical users (in Vietnamese)
 
-Nếu cụm này có nguồn gốc lịch sử / văn hóa thật sự thú vị và nổi tiếng thì thêm đúng 1 phần:
+If this phrase has a truly interesting and well-known historical/cultural origin, add exactly 1 section:
 Origin
-nguồn gốc cực ngắn bằng tiếng Việt, dưới 22 từ
-Nếu không đủ thú vị hoặc không rõ ràng thì KHÔNG thêm phần Origin.
+very brief origin in Vietnamese, under 22 words
+If not interesting enough or not clear, DO NOT add the Origin section.
 
 [sound:https://translate.google.com/translate_tts?ie=UTF-8&tl=en&client=tw-ob&q=${encodeURIComponent(q)}]
 `.trim()
