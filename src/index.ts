@@ -87,9 +87,10 @@ return new Response(`<pre>${text.trim()}</pre>`, {
 // Start server
 serve({
   fetch: app.fetch,
-  port: env.PORT
+  port: env.PORT,
+  hostname: '0.0.0.0'
 }, (info) => {
-  logger.info({ port: info.port }, 'Server running');
+  logger.info({ port: info.port, hostname: info.address }, 'Server running');
   logger.info('API Endpoints:');
   logger.info('  GET  /          - Health check');
   logger.info('  GET  /cache     - Cache info');
