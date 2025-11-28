@@ -1,42 +1,34 @@
 import { nojiApi } from './api';
 import { getValidToken } from './auth';
 import { env } from '../config/env';
-import { API, CARD_SECTIONS } from '../constants';
+import { API, INTERVALS } from '../constants';
 import type { Card, CardCache, CacheInfo, NojiNote } from '../types';
 import { cacheLogger, apiLogger } from './logger';
 
 let cardCache: CardCache | null = null;
 
-function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0];
-}
-
 function formatDefinition(text: string): string {
-  // If already has newlines, return as is (from content field)
-  if (text.includes('\n')) {
-    // Convert markdown asterisks to HTML bold
-    return text.replace(/\*([^*]+)\*/g, '<b>$1</b>');
-  }
-
-  // Format preview text (no newlines) by adding line breaks and bold
   let formatted = text;
 
-  // Add bold and line breaks to section headers
-  for (const header of CARD_SECTIONS) {
-    const regex = new RegExp(`\\s+(${header}:)\\s*`, 'gi');
-    formatted = formatted.replace(regex, '\n\n<b>$1</b>\n');
-  }
+  // Convert markdown asterisks to HTML bold
+  formatted = formatted.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+
+  // Add line breaks BEFORE section headers with colons (IPA:, Synonyms:, Antonyms:)
+  // Match anywhere in text, not just at line start
+  formatted = formatted.replace(/\s+(IPA|Synonyms?|Antonyms?)\s*:/g, '\n\n<b>$1:</b>');
+
+  // Add line breaks BEFORE section headers WITHOUT colons (Examples, Collocations, Usage, Origin)
+  // Match when preceded by whitespace
+  formatted = formatted.replace(/\s+(Examples?|Collocations?|Usage|Origin)(\s+)/g, '\n\n<b>$1</b>\n');
 
   // Add newline before translations (before →)
   formatted = formatted
     .replace(/\s+(→)/g, '\n$1')
-    // Add newline between bullet points (after translation before next •)
-    .replace(/(→[^•]+?)\s+•/g, '$1\n• ')
-    // Add newline before section headers that come after bullets
-    .replace(/(→[^•]+?)\s+\*([A-Z])/g, '$1\n\n<b>$2');
+    // Add newline between bullet points
+    .replace(/(→[^•]+?)\s+•/g, '$1\n• ');
 
-  // Convert remaining markdown asterisks to HTML bold
-  formatted = formatted.replace(/\*([^*]+)\*/g, '<b>$1</b>');
+  // Clean up multiple consecutive newlines (max 2)
+  formatted = formatted.replace(/\n{3,}/g, '\n\n');
 
   return formatted.trim();
 }
@@ -88,14 +80,25 @@ async function fetchCardsFromDeck(token: string, deckId: string): Promise<Card[]
 }
 
 export async function getTodayCards(): Promise<Card[]> {
-  const today = getTodayDate();
+  const now = Date.now();
 
-  // Check if we have cached cards for today
+  // Check if we have valid cached cards
   if (cardCache) {
-    cacheLogger.debug({ date: cardCache.date, today, count: cardCache.cards.length }, 'Checking cache');
+    const isExpired = cardCache.expiresAt <= now;
+    const timeRemaining = Math.max(0, cardCache.expiresAt - now);
+    const minutesRemaining = Math.floor(timeRemaining / 60000);
 
-    if (cardCache.date === today && cardCache.cards.length > 0) {
-      cacheLogger.info({ count: cardCache.cards.length }, 'Using cached cards - No API call');
+    cacheLogger.debug({
+      expiresAt: new Date(cardCache.expiresAt).toISOString(),
+      minutesRemaining,
+      count: cardCache.cards.length
+    }, 'Checking cache');
+
+    if (!isExpired && cardCache.cards.length > 0) {
+      cacheLogger.info({
+        count: cardCache.cards.length,
+        minutesRemaining
+      }, 'Using cached cards - No API call');
       return cardCache.cards;
     }
 
@@ -127,13 +130,18 @@ export async function getTodayCards(): Promise<Card[]> {
 
   apiLogger.info({ totalCards: allCards.length }, 'Total cards fetched from all decks');
 
-  // Cache cards for today
+  // Cache cards with 1 hour expiration
+  const expiresAt = now + INTERVALS.CARD_CACHE_DURATION;
   cardCache = {
     cards: allCards,
-    date: today
+    expiresAt
   };
 
-  cacheLogger.info({ date: today, count: allCards.length }, 'Cards cached');
+  cacheLogger.info({
+    expiresAt: new Date(expiresAt).toISOString(),
+    count: allCards.length,
+    durationMinutes: INTERVALS.CARD_CACHE_DURATION / 60000
+  }, 'Cards cached');
 
   return allCards;
 }
@@ -144,7 +152,10 @@ export function getRandomCard(cards: Card[]): Card {
 
 export function clearCache(): void {
   if (cardCache) {
-    cacheLogger.info({ count: cardCache.cards.length, date: cardCache.date }, 'Clearing cache');
+    cacheLogger.info({
+      count: cardCache.cards.length,
+      expiresAt: new Date(cardCache.expiresAt).toISOString()
+    }, 'Clearing cache');
     cardCache = null;
   } else {
     cacheLogger.info('No cache to clear');
@@ -153,9 +164,15 @@ export function clearCache(): void {
 
 export function getCacheInfo(): CacheInfo {
   if (cardCache) {
+    const now = Date.now();
+    const timeRemaining = Math.max(0, cardCache.expiresAt - now);
+    const minutesRemaining = Math.floor(timeRemaining / 60000);
+    const secondsRemaining = Math.floor((timeRemaining % 60000) / 1000);
+
     return {
       cached: true,
-      date: cardCache.date,
+      expiresAt: cardCache.expiresAt,
+      expiresIn: `${minutesRemaining}m ${secondsRemaining}s`,
       count: cardCache.cards.length
     };
   }

@@ -3,9 +3,10 @@ import { Hono } from 'hono';
 import { sendRandomCard } from './cronjob';
 import { clearCache, getCacheInfo, getTodayCards } from './lib/cards';
 import { env } from './config/env';
-import { getPrompt, INTERVALS } from './constants';
+import { getPrompt } from './constants';
 import { logger } from './lib/logger';
-import {GoogleGenAI} from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
+import cron from 'node-cron';
 
 const ai = new GoogleGenAI({apiKey: env.GEMINI_API_KEY});
 
@@ -99,9 +100,13 @@ serve({
   logger.info('  POST /send      - Send card now');
 });
 
-// Start cronjob
-logger.info('Cronjob started (runs every minute, 1/5 probability to send card)');
-logger.info('Average: ~1 card every 5 minutes');
+// Start cronjob with Vietnam timezone
+logger.info('Cronjob started: Every minute, Mon-Fri 9AM-6PM (Asia/Saigon)');
+logger.info('Probability: 1/5 chance per run (~1 card every 5 minutes)');
 
-sendRandomCard(); // Run immediately
-setInterval(sendRandomCard, INTERVALS.CRONJOB);
+// Run every minute from 9AM-5:59PM, Monday-Friday (Vietnam time)
+cron.schedule('* 9-17 * * 1-5', () => {
+  sendRandomCard();
+}, {
+  timezone: 'Asia/Saigon'
+});

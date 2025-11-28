@@ -23,17 +23,69 @@ nojiApi.interceptors.request.use((config) => {
   return config;
 });
 
-// Log errors
+// Auto-retry with fresh token on 401 errors
+let isRefreshing = false;
+let failedQueue: Array<{ resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> = [];
+
+const processQueue = (error: unknown = null) => {
+  for (const prom of failedQueue) {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(null);
+    }
+  }
+  failedQueue = [];
+};
+
 nojiApi.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
     if (error.response) {
       apiLogger.error({
         url: error.config?.url,
         status: error.response.status,
         data: error.response.data
       }, 'API Error');
+
+      // Handle 401 (unauthorized) - token might be expired
+      if (error.response.status === 401 && !originalRequest._retry) {
+        if (isRefreshing) {
+          // Queue this request while token is being refreshed
+          return new Promise((resolve, reject) => {
+            failedQueue.push({ resolve, reject });
+          }).then(() => {
+            return nojiApi(originalRequest);
+          });
+        }
+
+        originalRequest._retry = true;
+        isRefreshing = true;
+
+        try {
+          apiLogger.info('Token expired (401), re-authenticating...');
+          // Dynamically import to avoid circular dependency
+          const { getValidToken } = await import('./auth');
+          const newToken = await getValidToken();
+
+          // Update the failed request with new token
+          originalRequest.headers.authorization = `Bearer ${newToken}`;
+
+          processQueue();
+          apiLogger.info('Re-authentication successful, retrying request');
+          return nojiApi(originalRequest);
+        } catch (refreshError) {
+          processQueue(refreshError);
+          apiLogger.error({ err: refreshError }, 'Re-authentication failed');
+          return Promise.reject(refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      }
     }
+
     return Promise.reject(error);
   }
 );

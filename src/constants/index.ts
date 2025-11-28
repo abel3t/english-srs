@@ -2,6 +2,7 @@
 export const INTERVALS = {
   CRONJOB: 60 * 1000, // 1 minute
   TOKEN_CACHE_DURATION: 23 * 60 * 60 * 1000, // 23 hours
+  CARD_CACHE_DURATION: 60 * 60 * 1000, // 1 hour
 } as const;
 
 // Probabilities

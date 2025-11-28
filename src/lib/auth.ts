@@ -6,9 +6,9 @@ import { authLogger } from './logger';
 
 let tokenCache: TokenCache | null = null;
 
-export async function getValidToken(): Promise<string> {
+export async function getValidToken(forceRefresh = false): Promise<string> {
   // Check if we have a valid cached token
-  if (tokenCache) {
+  if (tokenCache && !forceRefresh) {
     const now = Date.now();
     const isExpired = tokenCache.expiresAt <= now;
 
@@ -17,6 +17,11 @@ export async function getValidToken(): Promise<string> {
       return tokenCache.token;
     }
     authLogger.info('Token expired, logging in again');
+  }
+
+  if (forceRefresh) {
+    authLogger.info('Force refresh requested, invalidating cache');
+    tokenCache = null;
   }
 
   // Login to get a new token

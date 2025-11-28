@@ -6,7 +6,7 @@ export type Card = {
 
 export type CardCache = {
   cards: Card[];
-  date: string; // YYYY-MM-DD
+  expiresAt: number; // Timestamp
 };
 
 // Noji API types
@@ -36,6 +36,7 @@ export type TokenCache = {
 // Cache info response
 export type CacheInfo = {
   cached: boolean;
-  date?: string;
+  expiresAt?: number;
+  expiresIn?: string; // Human-readable time remaining
   count?: number;
 };
