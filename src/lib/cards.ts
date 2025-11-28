@@ -14,7 +14,8 @@ function getTodayDate(): string {
 function formatDefinition(text: string): string {
   // If already has newlines, return as is (from content field)
   if (text.includes('\n')) {
-    return text;
+    // Convert markdown asterisks to HTML bold
+    return text.replace(/\*([^*]+)\*/g, '<b>$1</b>');
   }
 
   // Format preview text (no newlines) by adding line breaks and bold
@@ -23,7 +24,7 @@ function formatDefinition(text: string): string {
   // Add bold and line breaks to section headers
   for (const header of CARD_SECTIONS) {
     const regex = new RegExp(`\\s+(${header}:)\\s*`, 'gi');
-    formatted = formatted.replace(regex, '\n\n*$1*\n');
+    formatted = formatted.replace(regex, '\n\n<b>$1</b>\n');
   }
 
   // Add newline before translations (before →)
@@ -32,7 +33,10 @@ function formatDefinition(text: string): string {
     // Add newline between bullet points (after translation before next •)
     .replace(/(→[^•]+?)\s+•/g, '$1\n• ')
     // Add newline before section headers that come after bullets
-    .replace(/(→[^•]+?)\s+\*([A-Z])/g, '$1\n\n*$2');
+    .replace(/(→[^•]+?)\s+\*([A-Z])/g, '$1\n\n<b>$2');
+
+  // Convert remaining markdown asterisks to HTML bold
+  formatted = formatted.replace(/\*([^*]+)\*/g, '<b>$1</b>');
 
   return formatted.trim();
 }
@@ -47,6 +51,8 @@ async function fetchCardsFromDeck(token: string, deckId: string): Promise<Card[]
     const { data } = await nojiApi.get('/notes', {
       params: {
         deck_id: deckId,
+        frozen: false,
+        learning_state: 'learning',
         limit: API.NOTES_LIMIT,
         offset,
         order: 'DESC',

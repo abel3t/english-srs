@@ -46,7 +46,7 @@ app.post('/cache/refresh', async (c) => {
 
 // Manually trigger sending a card
 app.post('/send', async (c) => {
-  await sendRandomCard();
+  await sendRandomCard({ isForce: true });
   return c.json({ message: 'Card sent successfully' });
 });
 
