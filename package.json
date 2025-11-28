@@ -4,7 +4,12 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop english-srs",
+    "pm2:restart": "pm2 restart english-srs",
+    "pm2:logs": "pm2 logs english-srs",
+    "pm2:status": "pm2 status"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
