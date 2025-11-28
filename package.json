@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsup",
     "start": "node dist/index.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:stop": "pm2 stop english-srs",
@@ -24,6 +24,7 @@
   "devDependencies": {
     "@types/node": "^20.11.17",
     "pino-pretty": "^13.0.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3"
   }
