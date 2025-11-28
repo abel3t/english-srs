@@ -24,7 +24,7 @@ Word/Phrase to define: "${q}"
 
 MUST return EXACTLY and FULLY the following sections, do not omit any section, no extra words, no explanations:
 
-**${q.trim().toLowerCase()}** ${q.includes(' ') ? '' : '(part of speech in English) '}
+**${q.trim().toLowerCase()}** ${q.includes(' ') ? '' : '(part of speech in English) - CEFR English Proficiency Levels'}
 
 Here is a short Vietnamese definition from Dictionary (secondary meaning if applicable)
 ${q.includes(' ') ? '' : 'IPA: /standard American pronunciation/'}
