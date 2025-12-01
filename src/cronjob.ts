@@ -117,8 +117,8 @@ export async function sendRandomCard({ isForce = false }: { isForce?: boolean } 
     // Get a random card
     const card = getRandomCard(cards);
 
-    // Format the message with card count info
-    const message = `📚 <b>${card.word}</b> <i>(1/${cards.length})</i>\n\n${card.definition}`;
+    // Format the message
+    const message = `📚 <b>${card.word}</b>\n\n${card.definition}`;
 
     // Send to Telegram group
     await bot.telegram.sendMessage(CHAT_ID, message, { parse_mode: 'HTML' });
