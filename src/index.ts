@@ -99,12 +99,12 @@ serve({
 });
 
 // Start cronjob with Vietnam timezone
-logger.info('Cronjob started: Every minute, 24/7');
+logger.info('Cronjob started: Monday-Friday, 9 AM - 6 PM');
 logger.info('Probability: 1/5 chance per run (~1 card every 5 minutes)');
 logger.info('Guarantee: Force send if no card for 15+ minutes');
 
-// Run every minute, 24/7
-cron.schedule('* * * * *', () => {
+// Run every minute, Monday-Friday, 9 AM to 5:59 PM (hour 9-17)
+cron.schedule('* 9-17 * * 1-5', () => {
   sendRandomCard();
 }, {
   timezone: 'Asia/Saigon'
