@@ -21,6 +21,7 @@ export type NojiNote = {
     preview?: string;
   };
   meaning?: string;
+  nextReviewAt?: number; // Unix timestamp in seconds
 };
 
 export type NojiLoginResponse = {

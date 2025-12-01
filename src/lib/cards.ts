@@ -60,7 +60,13 @@ async function fetchCardsFromDeck(token: string, deckId: string): Promise<Card[]
 
     if (data.length === 0) break;
 
+    const nowSeconds = Math.floor(Date.now() / 1000);
     const batch = data
+      .filter((card: NojiNote) => {
+        // Only include cards that are due (nextReviewAt < now)
+        if (!card.nextReviewAt) return true; // Include cards without nextReviewAt
+        return card.nextReviewAt < nowSeconds;
+      })
       .map((card: NojiNote) => {
         const word = card.front?.content?.[0]?.text || card.front?.preview || card.term || '';
         const rawDefinition = card.back?.content?.[0]?.text || card.back?.preview || card.meaning || '';

@@ -10,9 +10,7 @@ import cron from 'node-cron';
 
 const ai = new GoogleGenAI({apiKey: env.GEMINI_API_KEY});
 
-
 const app = new Hono();
-
 
 // Health check endpoint
 app.get('/', (c) => {
