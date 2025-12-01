@@ -132,9 +132,48 @@ export async function getTodayCards(): Promise<Card[]> {
 
   // Fetch cards from all decks
   const allCards: Card[] = [];
+  let retriedWithFreshToken = false;
+  
   for (const deckId of deckIdList) {
-    const cards = await fetchCardsFromDeck(token, deckId);
-    allCards.push(...cards);
+    try {
+      const cards = await fetchCardsFromDeck(token, deckId);
+      allCards.push(...cards);
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { status: number; data?: { error?: { title: string } } } };
+      
+      // Handle private deck errors
+      if (axiosError.response?.status === 422 && axiosError.response?.data?.error?.title === 'This deck is private') {
+        // If we haven't tried with a fresh token yet, force re-authentication and retry
+        if (!retriedWithFreshToken) {
+          apiLogger.info({ deckId }, 'Private deck error - attempting fresh login to get updated permissions');
+          retriedWithFreshToken = true;
+          
+          // Force fresh login to get a new token with potentially updated permissions
+          const freshToken = await getValidToken(true);
+          
+          try {
+            const cards = await fetchCardsFromDeck(freshToken, deckId);
+            allCards.push(...cards);
+            apiLogger.info({ deckId }, 'Successfully accessed deck after fresh login');
+            continue;
+          } catch (retryError: unknown) {
+            const retryAxiosError = retryError as { response?: { status: number; data?: { error?: { title: string } } } };
+            if (retryAxiosError.response?.status === 422 && retryAxiosError.response?.data?.error?.title === 'This deck is private') {
+              apiLogger.warn({ deckId, error: retryAxiosError.response.data.error }, 'Deck still private after fresh login - skipping');
+              continue;
+            }
+            throw retryError;
+          }
+        } else {
+          // Already retried with fresh token, skip this deck
+          apiLogger.warn({ deckId, error: axiosError.response.data.error }, 'Skipping private deck');
+          continue;
+        }
+      }
+      
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   apiLogger.info({ totalCards: allCards.length }, 'Total cards fetched from all decks');

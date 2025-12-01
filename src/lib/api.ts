@@ -50,8 +50,17 @@ nojiApi.interceptors.response.use(
         data: error.response.data
       }, 'API Error');
 
-      // Handle 401 (unauthorized) or 422 (deck access issues) - token might be expired or permissions changed
-      if ((error.response.status === 401 || error.response.status === 422) && !originalRequest._retry) {
+      // Check if this is a private deck error (422 with specific message)
+      const isPrivateDeckError = error.response.status === 422 && 
+        error.response.data?.error?.title === 'This deck is private';
+      
+      if (isPrivateDeckError) {
+        // Don't retry on private deck errors - let the caller handle it
+        return Promise.reject(error);
+      }
+
+      // Handle 401 (unauthorized) - token might be expired
+      if (error.response.status === 401 && !originalRequest._retry) {
         if (isRefreshing) {
           // Queue this request while token is being refreshed
           return new Promise((resolve, reject) => {
@@ -65,7 +74,7 @@ nojiApi.interceptors.response.use(
         isRefreshing = true;
 
         try {
-          apiLogger.info(`Token expired or access issue (${error.response.status}), re-authenticating...`);
+          apiLogger.info('Token expired (401), re-authenticating...');
           // Dynamically import to avoid circular dependency
           const { getValidToken } = await import('./auth');
           const newToken = await getValidToken();
