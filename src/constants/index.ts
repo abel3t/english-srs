@@ -1,13 +1,14 @@
+// Probabilities
+export const PROBABILITIES = {
+  SEND_CARD: 0.2, // 20% chance - 1 card every ~5 minutes on average
+} as const;
+
 // Time intervals
 export const INTERVALS = {
   CRONJOB: 60 * 1000, // 1 minute
   TOKEN_CACHE_DURATION: 23 * 60 * 60 * 1000, // 23 hours
   CARD_CACHE_DURATION: 60 * 60 * 1000, // 1 hour
-} as const;
-
-// Probabilities
-export const PROBABILITIES = {
-  SEND_CARD: 0.2, // 1/5 chance (20%)
+  MAX_HOURS_WITHOUT_CARD: 0.25, // Force send if no card sent for 15+ minutes
 } as const;
 
 // API Configuration

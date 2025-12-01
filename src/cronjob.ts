@@ -1,7 +1,7 @@
 import { Telegraf } from 'telegraf';
 import { getTodayCards, getRandomCard, clearCache } from './lib/cards';
 import { env } from './config/env';
-import { PROBABILITIES } from './constants';
+import { PROBABILITIES, INTERVALS } from './constants';
 import { cronLogger } from './lib/logger';
 import { getDay, getHours, format } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
@@ -9,6 +9,10 @@ import { toZonedTime } from 'date-fns-tz';
 const bot = new Telegraf(env.TELEGRAM_BOT_TOKEN);
 const CHAT_ID = env.TELEGRAM_CHAT_ID;
 const VIETNAM_TIMEZONE = 'Asia/Saigon';
+
+// Track when the last card was sent to avoid long gaps
+let lastCardSentTime: number | null = null;
+const MAX_HOURS_WITHOUT_CARD = INTERVALS.MAX_HOURS_WITHOUT_CARD; // Force send if no card sent for 15+ minutes
 
 function getVietnamTime(): {
   vietnamTime: Date;
@@ -47,6 +51,38 @@ export async function sendRandomCard({ isForce = false }: { isForce?: boolean } 
       cronLogger.info('Force flag enabled - Cache cleared for fresh data');
     }
 
+    // Get today's cards (cached if already fetched today) - fetch BEFORE probability check
+    const cards = await getTodayCards();
+
+    // Always log card count for debugging
+    cronLogger.info({
+      vietnamTime: vnTimeFormatted,
+      totalCardsAvailable: cards.length,
+      isForce
+    }, 'Cards fetched from API');
+
+    if (cards.length === 0) {
+      cronLogger.warn({
+        vietnamTime: vnTimeFormatted,
+        reason: 'No cards available in database'
+      }, 'Card NOT sent - No cards available');
+      return;
+    }
+
+    // Check if we need to force send due to long gap
+    const now = Date.now();
+    const hoursSinceLastCard = lastCardSentTime ? (now - lastCardSentTime) / (1000 * 60 * 60) : null;
+    const shouldForceDueToGap = hoursSinceLastCard !== null && hoursSinceLastCard >= MAX_HOURS_WITHOUT_CARD;
+
+    if (shouldForceDueToGap) {
+      cronLogger.info({
+        vietnamTime: vnTimeFormatted,
+        hoursSinceLastCard: hoursSinceLastCard.toFixed(1),
+        maxHours: MAX_HOURS_WITHOUT_CARD
+      }, 'Force sending card due to long gap');
+      isForce = true;
+    }
+
     // Random probability to send a card (skip if forced)
     if (!isForce) {
       const randomValue = Math.random();
@@ -57,6 +93,8 @@ export async function sendRandomCard({ isForce = false }: { isForce?: boolean } 
           vietnamTime: vnTimeFormatted,
           randomValue: randomValue.toFixed(3),
           threshold: PROBABILITIES.SEND_CARD,
+          totalCardsAvailable: cards.length,
+          hoursSinceLastCard: hoursSinceLastCard?.toFixed(1) || 'never',
           reason: 'Random probability check failed'
         }, 'Card NOT sent - Probability check (1/5 chance)');
         return;
@@ -65,24 +103,15 @@ export async function sendRandomCard({ isForce = false }: { isForce?: boolean } 
       cronLogger.info({
         vietnamTime: vnTimeFormatted,
         randomValue: randomValue.toFixed(3),
-        threshold: PROBABILITIES.SEND_CARD
+        threshold: PROBABILITIES.SEND_CARD,
+        totalCardsAvailable: cards.length
       }, 'Probability check passed - Proceeding to send card');
     } else {
       cronLogger.info({
         vietnamTime: vnTimeFormatted,
-        reason: 'Force flag enabled'
+        reason: shouldForceDueToGap ? `Long gap (${hoursSinceLastCard?.toFixed(1)}h)` : 'Force flag enabled',
+        totalCardsAvailable: cards.length
       }, 'Force send - Bypassing probability check');
-    }
-
-    // Get today's cards (cached if already fetched today)
-    const cards = await getTodayCards();
-
-    if (cards.length === 0) {
-      cronLogger.warn({
-        vietnamTime: vnTimeFormatted,
-        reason: 'No cards available in database'
-      }, 'Card NOT sent - No cards available');
-      return;
     }
 
     // Get a random card
@@ -93,6 +122,10 @@ export async function sendRandomCard({ isForce = false }: { isForce?: boolean } 
 
     // Send to Telegram group
     await bot.telegram.sendMessage(CHAT_ID, message, { parse_mode: 'HTML' });
+    
+    // Update last sent time
+    lastCardSentTime = Date.now();
+    
     cronLogger.info({
       vietnamTime: vnTimeFormatted,
       word: card.word,
