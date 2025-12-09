@@ -18,7 +18,6 @@ const envSchema = z.object({
   // Noji Configuration
   NOJI_EMAIL: z.string().email('Invalid email format'),
   NOJI_PASSWORD: z.string().min(1, 'Password is required'),
-  NOJI_DECK_ID: z.string().min(1, 'At least one deck ID is required'),
 
   // Telegram Configuration
   TELEGRAM_BOT_TOKEN: z.string().min(1, 'Telegram bot token is required'),

@@ -21,7 +21,6 @@ Automated English learning system that sends vocabulary cards from Noji to Teleg
 2. Fill in your credentials in `.env`:
    - `NOJI_EMAIL`: Your Noji account email
    - `NOJI_PASSWORD`: Your Noji account password
-   - `NOJI_DECK_ID`: The deck ID from your Noji deck URL
    - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token (get from @BotFather)
    - `TELEGRAM_CHAT_ID`: Your Telegram group chat ID
 

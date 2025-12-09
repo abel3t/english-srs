@@ -1,7 +1,6 @@
 import { nojiApi } from './api';
 import { getValidToken } from './auth';
-import { env } from '../config/env';
-import { API, INTERVALS } from '../constants';
+import { API, INTERVALS, DECK_IDS } from '../constants';
 import type { Card, CardCache, CacheInfo, NojiNote } from '../types';
 import { cacheLogger, apiLogger } from './logger';
 
@@ -116,14 +115,9 @@ export async function getTodayCards(): Promise<Card[]> {
   // Fetch cards from Noji API
   apiLogger.info('Fetching cards from Noji API...');
   const token = await getValidToken();
-  const deckIds = env.NOJI_DECK_ID;
 
-  // Support multiple deck IDs (comma-separated)
-  const deckIdList = deckIds.split(',').map(id => id.trim()).filter(id => id);
-
-  if (deckIdList.length === 0) {
-    throw new Error('At least one NOJI_DECK_ID is required');
-  }
+  // Use deck IDs from constants
+  const deckIdList = [DECK_IDS.VOCAB, DECK_IDS.SENTENCE];
 
   apiLogger.info({ deckCount: deckIdList.length }, 'Fetching from multiple decks...');
 

@@ -18,6 +18,12 @@ export const API = {
   NOTES_LIMIT: 100, // Items per page when fetching notes
 } as const;
 
+// Deck IDs
+export const DECK_IDS = {
+  VOCAB: '31148455',
+  SENTENCE: '31173958',
+} as const;
+
 export const getPrompt = (q: string) => `
 You are an authoritative English-Vietnamese dictionary expert, using only data from Cambridge Dictionary, Longman Dictionary, or Oxford Dictionary to create the most accurate and natural definitions for Vietnamese learners of English.
 
