@@ -47,7 +47,6 @@ async function fetchCardsFromDeck(token: string, deckId: string): Promise<Card[]
       params: {
         deck_id: deckId,
         frozen: false,
-        learning_state: 'learning',
         limit: API.NOTES_LIMIT,
         offset,
         order: 'DESC',
@@ -68,16 +67,13 @@ async function fetchCardsFromDeck(token: string, deckId: string): Promise<Card[]
         // Format definition (adds line breaks if needed)
         const definition = formatDefinition(rawDefinition);
 
-        // Log full card data for debugging
-        console.log('Card data:', { 
-          word, 
-          nextReviewAt: card.nextReviewAt,
-          nextReviewDate: card.nextReviewAt ? new Date(card.nextReviewAt * 1000).toISOString() : null
-        });
-
-        return { word, definition };
+        return { word, definition, nextReviewAt: card.nextReviewAt };
       })
-      .filter((c: Card) => c.word && c.definition);
+      .filter((c: Card) => {
+        const isDue = !c.nextReviewAt || c.nextReviewAt * 1000 <= Date.now();
+
+        return isDue && c.word && c.definition;
+      });
 
     cards.push(...batch);
     offset += API.NOTES_LIMIT;

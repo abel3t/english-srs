@@ -2,6 +2,7 @@
 export type Card = {
   word: string;
   definition: string;
+  nextReviewAt?: number; // Unix timestamp in seconds
 };
 
 export type CardCache = {
