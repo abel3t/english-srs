@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><link rel="stylesheet" href="popup.css"><title>Capture English</title></head>
+<body><header><strong>English SRS</strong><a href="https://english-srs.abeltran-develop.workers.dev/history" target="_blank">History</a></header>
+<div class="tabs"><button class="tab active" data-view="capture">Capture</button><button class="tab" data-view="review">Review due</button></div>
+<section id="capture" class="view active"><form id="form"><label for="text">Sentence or phrase</label><textarea id="text" autofocus placeholder="Paste at least 3 words..."></textarea><button id="submit" disabled>Save for later</button></form></section>
+<section id="review" class="view"><div id="reviewEmpty" class="empty">Press the button to get a random due card.</div><article id="card" hidden><div id="stageLabel" class="stage"></div><div id="cardText"></div><button id="reveal">Reveal sentence</button><div id="ratings" hidden></div></article><button id="getCard">Show a due card</button></section>
+<div id="status"></div><script src="popup.js"></script></body></html>

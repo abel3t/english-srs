@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "English SRS Capture",
+  "version": "1.0.0",
+  "description": "Capture English for later confirmation in English SRS.",
+  "action": {
+    "default_title": "Capture English",
+    "default_popup": "popup.html"
+  },
+  "host_permissions": ["https://english-srs.abeltran-develop.workers.dev/*"]
+}

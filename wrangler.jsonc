@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "english-srs",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-26",
+  "observability": { "enabled": true },
+  "vars": {
+    "OLLAMA_BASE_URL": "https://ollama.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "english-srs",
+      "database_id": "407834ef-3a4d-40f0-bb14-5c658bb0a679",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

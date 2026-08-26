@@ -1,0 +1,21 @@
+{
+  "name": "english-srs",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "build": "wrangler deploy --dry-run",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply english-srs --local",
+    "db:migrate:remote": "wrangler d1 migrations apply english-srs --remote"
+  },
+  "dependencies": {
+    "hono": "^4.10.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260826.1",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.126.0"
+  }
+}
