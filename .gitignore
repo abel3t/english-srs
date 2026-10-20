@@ -33,3 +33,6 @@ dist/
 .DS_Store
 cards.json
 /data/
+
+# python
+__pycache__/

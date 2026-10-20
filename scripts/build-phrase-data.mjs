@@ -53,7 +53,10 @@ have to|have got|have got to|be about|in on|that is|piece of|be going to|going t
 // Slots in idioms ("loop someone in"); words like "one" or "anything" stay literal ("one by one", "anything but").
 const PLACEHOLDERS = new Set(["one's", 'oneself', 'someone', "someone's", 'somebody', "somebody's", 'something', 'sb', 'sth']);
 const KIND_CODES = { frame: 0, phrasal_verb: 1, idiom: 2, prep_phrase: 3 };
-const PARTICLES = new Set(['up', 'down', 'out', 'off', 'on', 'in', 'over', 'back', 'away', 'through', 'around', 'along', 'about', 'apart', 'aside', 'into', 'onto', 'across', 'forward', 'together', 'ahead', 'behind', 'by']);
+// Separable verbs split around true particles ("figure it out"); with a plain preposition only longer idioms
+// split ("take it into account"), never two-word ones ("build on" must not match "build ... on top of").
+const PARTICLES = new Set(['up', 'down', 'out', 'off', 'over', 'back', 'away', 'through', 'around', 'along', 'apart', 'aside', 'across', 'forward', 'together', 'ahead']);
+const PREPOSITIONS = new Set(['on', 'in', 'into', 'onto', 'to', 'for', 'with', 'at', 'by', 'about', 'from', 'of', 'behind']);
 
 const raw = JSON.parse(readFileSync(wiktionaryPath, 'utf8'));
 const freq = JSON.parse(readFileSync(freqPath, 'utf8'));
@@ -75,7 +78,7 @@ const add = (title, kind) => {
   if (kind !== 'frame' && literal.length <= 2 && literal.every(word => (zipf.get(word) ?? 0) >= 5.8)) return;
   if (BASIC.has(words.join(' '))) return;
   // Separable phrasal verbs ("take ... into account", "figure ... out"): allow a short object after the verb.
-  const gap = words.length >= 2 && PARTICLES.has(words[1]) && !PLACEHOLDERS.has(words[0]) ? 1 : 0;
+  const gap = !PLACEHOLDERS.has(words[0]) && (PARTICLES.has(words[1]) || (words.length >= 3 && PREPOSITIONS.has(words[1]))) ? 1 : 0;
   entries.set(words.join(' '), [words.join(' '), KIND_CODES[kind], gap]);
 };
 for (const [title, rawKind] of Object.entries(raw)) {
