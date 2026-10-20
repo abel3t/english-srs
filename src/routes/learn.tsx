@@ -1,31 +1,47 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
+import { z } from 'zod';
+import { SyncBadge } from '@/components/card-badges';
 import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { getCandidateById } from '@/data/cards';
 import { errorMessage, postJson } from '@/lib/api-client';
-import type { LearningItem } from '@/lib/learning-db';
+import type { Candidate } from '@/lib/candidates-db';
+import type { Card as SavedCard, DailyStats } from '@/lib/cards-db';
+import type { Analysis } from '@/lib/learning-analysis';
 
 export const Route = createFileRoute('/learn')({
+  validateSearch: z.object({ candidate: z.number().int().positive().optional().catch(undefined) }),
+  loaderDeps: ({ search }) => search,
+  loader: ({ deps }) => (deps.candidate ? getCandidateById({ data: { id: deps.candidate } }) : null),
   head: () => ({ meta: [{ title: 'Learn · English SRS' }] }),
-  component: Learn,
+  component: LearnPage,
 });
-
-type Stats = { analyzed: number; saved: number; skipped: number };
-type ItemResponse = { item: LearningItem; stats: Stats };
 
 const wordCount = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
 const optional = (value: string) => value.trim() || undefined;
 
-function Learn() {
-  const [form, setForm] = useState({ text: '', context: '', confusingPart: '', intendedMeaning: '' });
-  const [item, setItem] = useState<LearningItem | null>(null);
-  const [draft, setDraft] = useState({ mainSentence: '', explanation: '' });
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [busy, setBusy] = useState<'analyze' | 'save' | 'skip' | null>(null);
+// Keyed by candidate so opening another suggested phrase starts with a fresh form.
+function LearnPage() {
+  const candidate = Route.useLoaderData();
+  return <Learn key={candidate?.id ?? 'manual'} candidate={candidate} />;
+}
+
+function Learn({ candidate }: { candidate: Candidate | null }) {
+  const [form, setForm] = useState(() => ({
+    text: candidate ? candidate.example || candidate.phrase : '',
+    context: candidate?.source ? `From "${candidate.source}"` : '',
+    confusingPart: candidate?.example ? candidate.phrase : '',
+    intendedMeaning: '',
+  }));
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [draft, setDraft] = useState({ phrase: '', explanation: '' });
+  const [saved, setSaved] = useState<{ card: SavedCard; stats: DailyStats } | null>(null);
+  const [busy, setBusy] = useState<'analyze' | 'save' | null>(null);
   const [status, setStatus] = useState<Status>(null);
 
   const field = (key: keyof typeof form) => ({
@@ -33,39 +49,42 @@ function Learn() {
   });
 
   async function analyze(event: FormEvent) {
-    event.preventDefault(); setStatus(null); setItem(null); setBusy('analyze');
+    event.preventDefault(); setStatus(null); setAnalysis(null); setSaved(null); setBusy('analyze');
     try {
-      const body = await postJson<ItemResponse>('/api/analyze', {
+      const body = await postJson<{ analysis: Analysis }>('/api/analyze', {
         text: form.text.trim(), context: optional(form.context), confusingPart: optional(form.confusingPart), intendedMeaning: optional(form.intendedMeaning),
       });
-      setItem(body.item); setStats(body.stats);
-      setDraft({ mainSentence: body.item.mainSentence, explanation: body.item.explanation });
+      setAnalysis(body.analysis);
+      setDraft({ phrase: body.analysis.mainSentence, explanation: body.analysis.explanation });
     } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
     finally { setBusy(null); }
   }
 
-  async function decide(action: 'save' | 'skip') {
-    if (!item) return;
-    setStatus(null); setBusy(action);
+  async function save() {
+    if (!analysis) return;
+    setStatus(null); setBusy('save');
     try {
-      await postJson<ItemResponse>(`/api/learning-items/${item.id}/${action}`, action === 'save'
-        ? { mainSentence: draft.mainSentence.trim(), explanation: draft.explanation.trim() } : undefined);
-      setStatus({ type: 'success', text: action === 'save' ? 'Saved to Noji.' : 'Skipped for now. It remains in your private history for recurrence detection.' });
-      setItem(null);
+      const body = await postJson<{ card: SavedCard; stats: DailyStats }>('/api/cards', {
+        phrase: draft.phrase.trim(), explanation: draft.explanation.trim(),
+        keyExpression: analysis.keyExpression, grammarPattern: analysis.grammarPattern,
+        originalInput: optional(form.text), context: optional(form.context), candidateId: candidate?.id,
+      });
+      setSaved(body); setAnalysis(null);
+      setForm({ text: '', context: '', confusingPart: '', intendedMeaning: '' });
     } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
     finally { setBusy(null); }
   }
 
   return (
     <>
-      <PageHeader title="English Learning Assistant" description="Understand real English, check how people use it, then decide whether it deserves a Noji card." />
+      <PageHeader title="Learn a phrase" description="Analyze real English first. Nothing is saved until you choose to make it a card." />
       <Card>
         <CardContent>
           <form onSubmit={analyze} className="grid gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="text">Sentence, phrase, or passage</Label>
               <Textarea {...field('text')} maxLength={3000} className="min-h-24" placeholder="Paste something you encountered and did not fully understand..." />
-              <p className="text-xs text-muted-foreground">At least 3 words. Nothing is saved to Noji until you confirm.</p>
+              <p className="text-xs text-muted-foreground">At least 3 words.</p>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="context">Context <span className="font-normal text-muted-foreground">(English or Vietnamese, optional)</span></Label>
@@ -86,25 +105,37 @@ function Learn() {
 
       <StatusMessage status={status} />
 
-      {item && (
+      {saved && (
+        <Card className="mt-4 border-emerald-200 bg-emerald-50">
+          <CardContent className="flex flex-wrap items-center gap-2 text-sm text-emerald-900">
+            <span>Saved “{saved.card.phrase}”. It will show up in your next review.</span>
+            <SyncBadge status={saved.card.nojiSyncStatus} />
+            {saved.card.nojiSyncError && <span className="text-red-700">{saved.card.nojiSyncError} — retry from <Link to="/cards" className="underline">Cards</Link>.</span>}
+            <span className="ml-auto text-muted-foreground">Today: {saved.stats.added} added · {saved.stats.reviewed} reviewed</span>
+          </CardContent>
+        </Card>
+      )}
+
+      {analysis && (
         <Card className="mt-4">
           <CardContent className="grid gap-4">
             <div className="rounded-md border-l-4 border-primary bg-muted px-3 py-2">
-              <div className="font-semibold capitalize">{item.recommendation.replaceAll('_', ' ')} — {item.recommendationScore}/10</div>
-              <div className="text-sm">{item.recommendationReason}</div>
+              <div className="font-semibold capitalize">{analysis.recommendation.replaceAll('_', ' ')} — {analysis.score}/10</div>
+              <div className="text-sm">{analysis.reason}</div>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="mainSentence">Noji title</Label>
-              <Textarea id="mainSentence" value={draft.mainSentence} onChange={event => setDraft(current => ({ ...current, mainSentence: event.target.value }))} />
+              <Label htmlFor="phrase">Card front</Label>
+              <Textarea id="phrase" value={draft.phrase} onChange={event => setDraft(current => ({ ...current, phrase: event.target.value }))} />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="explanation">Card content</Label>
+              <Label htmlFor="explanation">Card back</Label>
               <Textarea id="explanation" className="min-h-60" value={draft.explanation} onChange={event => setDraft(current => ({ ...current, explanation: event.target.value }))} />
             </div>
-            {stats && <p className="text-sm text-muted-foreground">Today: {stats.analyzed} analyzed · {stats.saved} saved · {stats.skipped} skipped</p>}
             <div className="flex gap-2">
-              <Button size="lg" className="bg-emerald-700 hover:bg-emerald-700/85" disabled={busy !== null} onClick={() => decide('save')}>{busy === 'save' ? 'Saving…' : 'Save to Noji'}</Button>
-              <Button size="lg" variant="secondary" disabled={busy !== null} onClick={() => decide('skip')}>Skip for now</Button>
+              <Button size="lg" className="bg-emerald-700 hover:bg-emerald-700/85" disabled={busy !== null || !draft.phrase.trim() || !draft.explanation.trim()} onClick={save}>
+                {busy === 'save' ? 'Saving…' : 'Save card'}
+              </Button>
+              <Button size="lg" variant="secondary" disabled={busy !== null} onClick={() => setAnalysis(null)}>Discard</Button>
             </div>
           </CardContent>
         </Card>

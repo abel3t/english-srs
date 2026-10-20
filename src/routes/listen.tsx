@@ -15,11 +15,6 @@ export const Route = createFileRoute('/listen')({
   component: Listen,
 });
 
-const sourceLabels: Record<Conversation['source'], string> = {
-  noji: 'Phrases from your due Noji cards',
-  'noji+history': 'Phrases from Noji, topped up with saved history',
-  history: 'Phrases from your saved history',
-};
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function Listen() {
@@ -56,7 +51,7 @@ function Listen() {
 
   return (
     <>
-      <PageHeader title="Conversation practice" description="Pick about 10 phrases you are learning in Noji, turn them into a real conversation, then listen to it." />
+      <PageHeader title="Conversation practice" description="Turn about 10 phrases you are learning into a real conversation, then listen to it." />
       <Card>
         <CardContent>
           <Button size="lg" disabled={busy} onClick={write}>{conversation ? 'Write another' : 'Pick phrases & write conversation'}</Button>
@@ -68,7 +63,7 @@ function Listen() {
         <Card className="mt-4">
           <CardHeader>
             <CardTitle>{conversation.title}</CardTitle>
-            <CardDescription>{sourceLabels[conversation.source]}</CardDescription>
+            <CardDescription>Built from {conversation.phrases.length} phrases you are learning</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
             <ol className="list-decimal space-y-1 pl-5 text-sm">

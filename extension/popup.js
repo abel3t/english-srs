@@ -15,9 +15,9 @@ document.querySelector('.tabs').addEventListener('click', event => {
 document.getElementById('form').addEventListener('submit', async event => {
   event.preventDefault(); submit.disabled = true; submit.textContent = 'Analyzing…'; status.className = '';
   try {
-    const response = await fetch(endpoint + '/api/analyze', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:text.value.trim() }) });
+    const response = await fetch(endpoint + '/api/candidates', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:text.value.trim() }) });
     const body = await response.json(); if (!response.ok) throw new Error(body.message || 'Could not capture sentence');
-    status.textContent = 'Waiting for confirmation: “' + body.item.mainSentence + '”'; status.className = 'success'; text.value = '';
+    status.textContent = body.added ? 'Saved. The dashboard will offer it to you later.' : 'Already saved or already a card.'; status.className = 'success'; text.value = '';
   } catch (error) { status.textContent = error.message; status.className = 'error'; }
   finally { submit.textContent = 'Save for later'; submit.disabled = wordCount(text.value) < 3; }
 });

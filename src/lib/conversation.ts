@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { CONVERSATION_PHRASE_COUNT, CONVERSATION_SPEAKERS, GEMINI_TTS_MODEL, getConversationPrompt, getSpeechPrompt } from '../constants';
-import { generateWithOllama, getDueCards } from './cloud-services';
-import { listLearningItems } from './learning-db';
+import { getPracticeCards } from './cards-db';
+import { generateWithOllama } from './cloud-services';
 
 const speakerNames = CONVERSATION_SPEAKERS.map(speaker => speaker.name) as [string, string];
 const generatedConversationSchema = z.object({
@@ -11,7 +11,7 @@ const generatedConversationSchema = z.object({
   usedPhrases: z.array(z.string()),
 });
 
-export type Conversation = z.infer<typeof generatedConversationSchema> & { phrases: string[]; source: 'noji' | 'noji+history' | 'history' };
+export type Conversation = z.infer<typeof generatedConversationSchema> & { phrases: string[] };
 
 function shuffle<T>(items: T[]): T[] {
   const copy = [...items];
@@ -22,27 +22,20 @@ function shuffle<T>(items: T[]): T[] {
   return copy;
 }
 
-// Prefer cards Noji is currently scheduling; top up with saved D1 history when the deck has fewer due cards.
-async function pickPhrases(env: Bindings): Promise<{ phrases: string[]; source: Conversation['source'] }> {
-  const fromNoji = shuffle((await getDueCards(env, 50)).map(card => card.front)).slice(0, CONVERSATION_PHRASE_COUNT);
-  if (fromNoji.length >= CONVERSATION_PHRASE_COUNT) return { phrases: fromNoji, source: 'noji' };
-
-  const seen = new Set(fromNoji.map(phrase => phrase.toLowerCase()));
-  const saved = (await listLearningItems(env.DB, { limit: 100 }))
-    .filter(item => item.userDecision === 'saved' || item.userDecision === 'edited_then_saved')
-    .map(item => item.mainSentence)
-    .filter(phrase => !seen.has(phrase.toLowerCase()));
-  const phrases = [...fromNoji, ...shuffle(saved)].slice(0, CONVERSATION_PHRASE_COUNT);
-  if (!phrases.length) throw new Error('No Noji cards or saved phrases were found to build a conversation from.');
-  return { phrases, source: fromNoji.length ? 'noji+history' : 'history' };
+// Draw from the cards due soonest (the ones being learned right now), shuffled so each conversation differs.
+async function pickPhrases(env: Bindings): Promise<string[]> {
+  const cards = await getPracticeCards(env.DB, CONVERSATION_PHRASE_COUNT * 3);
+  const phrases = shuffle(cards.map(card => card.phrase)).slice(0, CONVERSATION_PHRASE_COUNT);
+  if (!phrases.length) throw new Error('Save a few cards first: conversations are built from the phrases you are learning.');
+  return phrases;
 }
 
 export async function createConversation(env: Bindings): Promise<Conversation> {
-  const { phrases, source } = await pickPhrases(env);
+  const phrases = await pickPhrases(env);
   const raw = await generateWithOllama(env, getConversationPrompt(phrases));
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try {
-    return { ...generatedConversationSchema.parse(JSON.parse(cleaned)), phrases, source };
+    return { ...generatedConversationSchema.parse(JSON.parse(cleaned)), phrases };
   } catch (error) {
     throw new Error(`Ollama returned an invalid conversation format: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }

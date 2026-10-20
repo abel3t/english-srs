@@ -1,0 +1,28 @@
+import { createServerFn } from '@tanstack/react-start';
+import { env } from 'cloudflare:workers';
+import { z } from 'zod';
+import { getCandidate, getRandomCandidate, listCandidates } from '@/lib/candidates-db';
+import { getOverview, listCards } from '@/lib/cards-db';
+
+export const cardsSearchSchema = z.object({
+  q: z.string().trim().max(200).optional().catch(undefined),
+  state: z.enum(['new', 'learning', 'review']).optional().catch(undefined),
+  sync: z.enum(['pending', 'synced', 'failed']).optional().catch(undefined),
+});
+export type CardsSearch = z.infer<typeof cardsSearchSchema>;
+
+export const getDashboard = createServerFn().handler(async () => ({
+  overview: await getOverview(env.DB),
+  candidate: await getRandomCandidate(env.DB),
+  recent: await listCards(env.DB, { limit: 6 }),
+}));
+
+export const getCards = createServerFn()
+  .validator(cardsSearchSchema)
+  .handler(({ data }) => listCards(env.DB, { query: data.q, state: data.state, sync: data.sync, limit: 200 }));
+
+export const getCandidateById = createServerFn()
+  .validator(z.object({ id: z.number().int().positive() }))
+  .handler(({ data }) => getCandidate(env.DB, data.id));
+
+export const getPendingCandidates = createServerFn().handler(() => listCandidates(env.DB));

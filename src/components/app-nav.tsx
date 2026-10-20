@@ -1,15 +1,17 @@
 import { Link } from '@tanstack/react-router';
 
 const navItems = [
-  { to: '/', label: 'Dashboard' },
+  { to: '/', label: 'Today' },
+  { to: '/review', label: 'Review' },
   { to: '/learn', label: 'Learn' },
+  { to: '/import', label: 'Import' },
   { to: '/listen', label: 'Listen' },
-  { to: '/history', label: 'History' },
+  { to: '/cards', label: 'Cards' },
 ] as const;
 
 export function AppNav() {
   return (
-    <nav className="mb-5 flex items-center gap-1">
+    <nav className="mb-5 flex flex-wrap items-center gap-1">
       <Link to="/" className="mr-auto font-bold">English SRS</Link>
       {navItems.map(item => (
         <Link key={item.to} to={item.to} activeOptions={{ exact: item.to === '/' }}

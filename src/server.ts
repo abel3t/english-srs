@@ -3,7 +3,7 @@ import { api } from './api/app';
 import type { Bindings } from './bindings';
 
 // The JSON API (also used by the Chrome extension) stays on Hono; every other request renders the React app.
-const apiPaths = new Set(['/health', '/cards']);
+const apiPaths = new Set(['/health']);
 
 export default {
   async fetch(request, env, ctx) {

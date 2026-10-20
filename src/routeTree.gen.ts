@@ -10,18 +10,25 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as HistoryRouteImport } from './routes/history'
+import { Route as CardsRouteImport } from './routes/cards'
+import { Route as ImportRouteImport } from './routes/import'
 import { Route as LearnRouteImport } from './routes/learn'
 import { Route as ListenRouteImport } from './routes/listen'
+import { Route as ReviewRouteImport } from './routes/review'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HistoryRoute = HistoryRouteImport.update({
-  id: '/history',
-  path: '/history',
+const CardsRoute = CardsRouteImport.update({
+  id: '/cards',
+  path: '/cards',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportRoute = ImportRouteImport.update({
+  id: '/import',
+  path: '/import',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LearnRoute = LearnRouteImport.update({
@@ -34,39 +41,52 @@ const ListenRoute = ListenRouteImport.update({
   path: '/listen',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReviewRoute = ReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/history': typeof HistoryRoute
+  '/cards': typeof CardsRoute
+  '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
   '/listen': typeof ListenRoute
+  '/review': typeof ReviewRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/history': typeof HistoryRoute
+  '/cards': typeof CardsRoute
+  '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
   '/listen': typeof ListenRoute
+  '/review': typeof ReviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/history': typeof HistoryRoute
+  '/cards': typeof CardsRoute
+  '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
   '/listen': typeof ListenRoute
+  '/review': typeof ReviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/history' | '/learn' | '/listen'
+  fullPaths: '/' | '/cards' | '/import' | '/learn' | '/listen' | '/review'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/history' | '/learn' | '/listen'
-  id: '__root__' | '/' | '/history' | '/learn' | '/listen'
+  to: '/' | '/cards' | '/import' | '/learn' | '/listen' | '/review'
+  id: '__root__' | '/' | '/cards' | '/import' | '/learn' | '/listen' | '/review'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  HistoryRoute: typeof HistoryRoute
+  CardsRoute: typeof CardsRoute
+  ImportRoute: typeof ImportRoute
   LearnRoute: typeof LearnRoute
   ListenRoute: typeof ListenRoute
+  ReviewRoute: typeof ReviewRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -78,11 +98,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/history': {
-      id: '/history'
-      path: '/history'
-      fullPath: '/history'
-      preLoaderRoute: typeof HistoryRouteImport
+    '/cards': {
+      id: '/cards'
+      path: '/cards'
+      fullPath: '/cards'
+      preLoaderRoute: typeof CardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/import': {
+      id: '/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof ImportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/learn': {
@@ -99,14 +126,23 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ListenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/review': {
+      id: '/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof ReviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  HistoryRoute: HistoryRoute,
+  CardsRoute: CardsRoute,
+  ImportRoute: ImportRoute,
   LearnRoute: LearnRoute,
   ListenRoute: ListenRoute,
+  ReviewRoute: ReviewRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

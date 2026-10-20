@@ -2,7 +2,10 @@ import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { OLLAMA_MODEL, PROMPT_VERSION, getPrompt } from '../constants';
 import { generateWithOllama } from './cloud-services';
-import { findHistoryCandidates, insertLearningItem, learningDateKey, normalizeLearningText, type LearningItem, type Recommendation } from './learning-db';
+import { findRelatedCards, type Card } from './cards-db';
+import { learningDateKey } from './text';
+
+export type Recommendation = 'memorize' | 'optional' | 'understand_only' | 'needs_context' | 'review_existing';
 
 const relationshipSchema = z.enum(['exact_duplicate', 'same_meaning', 'shared_pattern', 'related_but_different', 'unrelated']);
 const generatedAnalysisSchema = z.object({
@@ -39,48 +42,42 @@ function buildExplanation(analysis: z.infer<typeof generatedAnalysisSchema>): st
     .map(([title, content]) => `**${title}**\n${content}`).join('\n\n');
 }
 
-function resolveRecommendation(analysis: z.infer<typeof generatedAnalysisSchema>, candidates: LearningItem[]) {
-  const validIds = new Set(candidates.map(candidate => candidate.id));
+function resolveRecommendation(analysis: z.infer<typeof generatedAnalysisSchema>, related: Card[]) {
+  const validIds = new Set(related.map(card => card.id));
   const relevant = analysis.historyRelationships.filter(item => validIds.has(item.id) && item.relationship !== 'unrelated');
-  const exact = relevant.find(item => item.relationship === 'exact_duplicate' || item.relationship === 'same_meaning');
-  const related = exact ?? relevant[0];
-  const existing = exact ? candidates.find(candidate => candidate.id === exact.id) : undefined;
+  const duplicate = relevant.find(item => item.relationship === 'exact_duplicate' || item.relationship === 'same_meaning');
+  const relatedCardId = (duplicate ?? relevant[0])?.id ?? null;
 
   if (analysis.needsMoreContext) {
-    return { recommendation: 'needs_context' as Recommendation, score: 0, reason: analysis.contextQuestion || analysis.recommendationReason, relatedItemId: related?.id ?? null };
+    return { recommendation: 'needs_context' as Recommendation, score: 0, reason: analysis.contextQuestion || analysis.recommendationReason, relatedCardId };
   }
-  if (existing?.userDecision === 'saved' || existing?.userDecision === 'edited_then_saved') {
-    return { recommendation: 'review_existing' as Recommendation, score: analysis.baseScore, reason: `A card with the same meaning was already saved: “${existing.mainSentence}”`, relatedItemId: existing.id };
+  const existing = duplicate ? related.find(card => card.id === duplicate.id) : undefined;
+  if (existing) {
+    return { recommendation: 'review_existing' as Recommendation, score: analysis.baseScore, reason: `You already have a card with the same meaning: “${existing.phrase}”`, relatedCardId };
   }
-
-  const distinctDays = new Set(relevant.map(relation => {
-    const timestamp = candidates.find(item => item.id === relation.id)?.createdAt;
-    return timestamp ? learningDateKey(timestamp) : null;
-  }).filter((date): date is string => Boolean(date))).size;
-  const bonus = distinctDays >= 2 ? 2 : distinctDays === 1 ? 1 : 0;
-  const score = Math.min(10, analysis.baseScore + bonus);
+  const score = analysis.baseScore;
   const recommendation: Recommendation = score >= 8 ? 'memorize' : score >= 5 ? 'optional' : 'understand_only';
-  const recurrence = bonus ? ` Related language appeared on ${distinctDays} previous day${distinctDays === 1 ? '' : 's'}, adding ${bonus} recurrence point${bonus === 1 ? '' : 's'}.` : '';
-  return { recommendation, score, reason: `${analysis.recommendationReason}${recurrence}`, relatedItemId: related?.id ?? null };
+  return { recommendation, score, reason: analysis.recommendationReason, relatedCardId };
 }
 
-export async function analyzeLearningInput(env: Bindings, input: AnalyzeInput): Promise<LearningItem> {
-  const candidates = await findHistoryCandidates(env.DB, input.text);
-  const prompt = getPrompt(input.text, input.context, input.confusingPart, input.intendedMeaning, candidates.map(item => ({
-    id: item.id, sentence: item.mainSentence, keyExpression: item.keyExpression,
-    grammarPattern: item.grammarPattern, decision: item.userDecision, date: learningDateKey(item.createdAt),
+export type Analysis = {
+  mainSentence: string; explanation: string; keyExpression: string; grammarPattern: string;
+  recommendation: Recommendation; score: number; reason: string; relatedCardId: number | null;
+  model: string; promptVersion: string;
+};
+
+// Analysis is a preview only: nothing is written to D1 until the learner saves it as a card.
+export async function analyzeLearningInput(env: Bindings, input: AnalyzeInput): Promise<Analysis> {
+  const related = await findRelatedCards(env.DB, input.text);
+  const prompt = getPrompt(input.text, input.context, input.confusingPart, input.intendedMeaning, related.map(card => ({
+    id: card.id, phrase: card.phrase, keyExpression: card.keyExpression, grammarPattern: card.grammarPattern, addedOn: learningDateKey(card.createdAt),
   })));
   const generated = parseGeneratedJson(await generateWithOllama(env, prompt));
-  const resolved = resolveRecommendation(generated, candidates);
-
-  return insertLearningItem(env.DB, {
-    originalInput: input.text, context: input.context?.trim() || null,
-    intendedMeaning: input.intendedMeaning?.trim() || null, confusingPart: input.confusingPart?.trim() || null,
-    normalizedInput: normalizeLearningText(input.text),
-    mainSentence: generated.mainSentence.trim(), keyExpression: generated.keyExpression.trim(),
-    grammarPattern: generated.grammarPattern.trim(), explanation: buildExplanation(generated),
-    recommendation: resolved.recommendation, recommendationScore: resolved.score,
-    recommendationReason: resolved.reason, relatedItemId: resolved.relatedItemId,
+  const resolved = resolveRecommendation(generated, related);
+  return {
+    mainSentence: generated.mainSentence.trim(), explanation: buildExplanation(generated),
+    keyExpression: generated.keyExpression.trim(), grammarPattern: generated.grammarPattern.trim(),
+    recommendation: resolved.recommendation, score: resolved.score, reason: resolved.reason, relatedCardId: resolved.relatedCardId,
     model: OLLAMA_MODEL, promptVersion: PROMPT_VERSION,
-  });
+  };
 }

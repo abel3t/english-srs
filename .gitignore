@@ -32,4 +32,4 @@ dist/
 # misc
 .DS_Store
 cards.json
-data/
+/data/

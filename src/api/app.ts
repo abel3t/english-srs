@@ -1,103 +1,147 @@
 import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
-import { CONVERSATION_SPEAKERS } from '../constants';
-import { analyzeLearningInput } from '../lib/learning-analysis';
-import { deleteLearningItem, getDailyStats, getLearningItem, markLearningItem } from '../lib/learning-db';
-import { answerNojiCard, createNojiNote, getRandomDueCard } from '../lib/cloud-services';
+import { CONVERSATION_SPEAKERS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
+import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, setNojiSync, type Card } from '../lib/cards-db';
+import { addCandidates, setCandidateStatus, snoozeCandidate } from '../lib/candidates-db';
+import { createNojiNote } from '../lib/cloud-services';
 import { createConversation, synthesizeConversation } from '../lib/conversation';
+import { analyzeLearningInput } from '../lib/learning-analysis';
+import { extractPhrases } from '../lib/phrase-extraction';
+import { formatInterval, nextSchedule, ratings } from '../lib/srs';
+import { countWords } from '../lib/text';
 
 export const api = new Hono<{ Bindings: Bindings }>();
+
+class ApiError extends Error {
+  constructor(readonly status: ContentfulStatusCode, readonly title: string, message: string) { super(message); }
+}
+
+api.onError((error, c) => {
+  if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
+  if (error instanceof ApiError) return c.json({ error: error.title, message: error.message }, error.status);
+  console.error(`${c.req.method} ${c.req.path} failed`, error);
+  return c.json({ error: 'Request failed', message: error instanceof Error ? error.message : 'Unknown error' }, 502);
+});
+
+const idParam = (value: string) => {
+  const id = Number.parseInt(value);
+  if (!Number.isSafeInteger(id) || id <= 0) throw new ApiError(400, 'Validation error', 'Invalid ID.');
+  return id;
+};
 
 const analyzeSchema = z.object({
   text: z.string().trim().min(1).max(3000), context: z.string().trim().max(1500).optional(),
   confusingPart: z.string().trim().max(500).optional(), intendedMeaning: z.string().trim().max(1000).optional(),
 });
-const saveSchema = z.object({ mainSentence: z.string().trim().min(1).max(1000), explanation: z.string().trim().min(1).max(6000) });
-const reviewAnswerSchema = z.object({ cardId: z.string().min(1).max(100), sessionTimestamp: z.number().int().positive(),
-  answer: z.enum(['again', 'hard', 'good', 'easy']), reviewDurationMs: z.number().int().min(0).max(3_600_000) });
+const cardSchema = z.object({
+  phrase: z.string().trim().min(1).max(1000), explanation: z.string().trim().min(1).max(6000),
+  keyExpression: z.string().trim().max(300).default(''), grammarPattern: z.string().trim().max(300).default(''),
+  originalInput: z.string().trim().max(3000).optional(), context: z.string().trim().max(1500).optional(),
+  candidateId: z.number().int().positive().optional(),
+});
+const reviewAnswerSchema = z.object({
+  cardId: z.union([z.string(), z.number()]).transform(String), answer: z.enum(['again', 'hard', 'good', 'easy']),
+  reviewDurationMs: z.number().int().min(0).max(3_600_000),
+});
+const candidateSchema = z.object({ text: z.string().trim().min(1).max(500), context: z.string().trim().max(1500).optional(), source: z.string().trim().max(200).default('Chrome extension') });
+const extractSchema = z.object({ text: z.string().trim().min(1).max(12_000), source: z.string().trim().max(200).optional() });
 const speakerLine = new RegExp(`^(${CONVERSATION_SPEAKERS.map(speaker => speaker.name).join('|')}): \\S`);
 const audioSchema = z.object({ transcript: z.string().trim().min(1).max(8000).refine(
   text => text.split('\n').filter(line => line.trim()).every(line => speakerLine.test(line.trim())),
   `Every line must start with ${CONVERSATION_SPEAKERS.map(speaker => `"${speaker.name}:"`).join(' or ')}.`,
 ) });
-const countWords = (text: string) => text.trim().split(/\s+/).filter(Boolean).length;
+
+// D1 is the source of truth; Noji is a best-effort copy that can be retried from the Cards page.
+async function syncToNoji(env: Bindings, card: Card): Promise<Card> {
+  try {
+    const noteId = await createNojiNote(env, card.phrase, card.explanation);
+    await setNojiSync(env.DB, card.id, { status: 'synced', noteId });
+  } catch (error) {
+    console.error('Noji sync failed', error);
+    await setNojiSync(env.DB, card.id, { status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
+  }
+  return (await getCard(env.DB, card.id)) ?? card;
+}
+
+export function toReviewCard(card: Card) {
+  return {
+    cardId: String(card.id), front: card.phrase, back: card.explanation, keyExpression: card.keyExpression,
+    sessionTimestamp: Math.floor(Date.now() / 1000),
+    answerButtons: ratings.map(type => ({ type, repeat: formatInterval(nextSchedule(card, type).intervalDays) })),
+  };
+}
+export type ReviewCard = ReturnType<typeof toReviewCard>;
 
 api.get('/health', c => c.json({ service: 'English SRS', status: 'running', runtime: 'cloudflare-workers', timestamp: new Date().toISOString() }));
-api.get('/cards', c => c.redirect('/learn', 301));
 
 api.post('/api/analyze', async c => {
-  try {
-    const input = analyzeSchema.parse(await c.req.json());
-    if (countWords(input.text) < 3) return c.json({ error: 'Validation error', message: 'Please enter at least 3 words.' }, 400);
-    const item = await analyzeLearningInput(c.env, input);
-    return c.json({ item, stats: await getDailyStats(c.env.DB) });
-  } catch (error) {
-    console.error('Learning analysis failed', error);
-    if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
-    return c.json({ error: 'Analysis failed', message: error instanceof Error ? error.message : 'Unknown error' }, 500);
-  }
+  const input = analyzeSchema.parse(await c.req.json());
+  if (countWords(input.text) < 3) throw new ApiError(400, 'Validation error', 'Please enter at least 3 words.');
+  return c.json({ analysis: await analyzeLearningInput(c.env, input) });
 });
 
-api.post('/api/learning-items/:id/save', async c => {
-  const id = Number.parseInt(c.req.param('id'));
-  const existing = Number.isSafeInteger(id) ? await getLearningItem(c.env.DB, id) : null;
-  if (!existing) return c.json({ error: 'Not found', message: 'Learning item was not found.' }, 404);
-  if (existing.userDecision === 'saved' || existing.userDecision === 'edited_then_saved') return c.json({ error: 'Already saved', message: 'This item was already saved to Noji.' }, 409);
-
-  try {
-    const input = saveSchema.parse(await c.req.json());
-    const noteId = await createNojiNote(c.env, input.mainSentence, input.explanation);
-    const edited = input.mainSentence !== existing.mainSentence || input.explanation !== existing.explanation;
-    const item = await markLearningItem(c.env.DB, id, edited ? 'edited_then_saved' : 'saved', { ...input, nojiNoteId: noteId });
-    return c.json({ item, stats: await getDailyStats(c.env.DB) });
-  } catch (error) {
-    console.error('Noji save failed', error);
-    if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
-    return c.json({ error: 'Noji save failed', message: error instanceof Error ? error.message : 'Unknown error' }, 502);
-  }
+api.post('/api/cards', async c => {
+  const input = cardSchema.parse(await c.req.json());
+  const card = await insertCard(c.env.DB, {
+    phrase: input.phrase, explanation: input.explanation, keyExpression: input.keyExpression, grammarPattern: input.grammarPattern,
+    originalInput: input.originalInput || null, context: input.context || null,
+    model: OLLAMA_MODEL, promptVersion: PROMPT_VERSION,
+  });
+  if (input.candidateId) await setCandidateStatus(c.env.DB, input.candidateId, 'learned');
+  return c.json({ card: await syncToNoji(c.env, card), stats: await getDailyStats(c.env.DB) }, 201);
 });
 
-api.post('/api/learning-items/:id/skip', async c => {
-  const id = Number.parseInt(c.req.param('id'));
-  const existing = Number.isSafeInteger(id) ? await getLearningItem(c.env.DB, id) : null;
-  if (!existing) return c.json({ error: 'Not found', message: 'Learning item was not found.' }, 404);
-  if (existing.userDecision === 'saved' || existing.userDecision === 'edited_then_saved') return c.json({ error: 'Already saved', message: 'A saved item cannot be skipped.' }, 409);
-  return c.json({ item: await markLearningItem(c.env.DB, id, 'skipped'), stats: await getDailyStats(c.env.DB) });
+api.post('/api/cards/:id/sync', async c => {
+  const card = await getCard(c.env.DB, idParam(c.req.param('id')));
+  if (!card) throw new ApiError(404, 'Not found', 'Card was not found.');
+  if (card.nojiSyncStatus === 'synced') throw new ApiError(409, 'Already synced', 'This card is already in Noji.');
+  return c.json({ card: await syncToNoji(c.env, card) });
 });
 
-api.delete('/api/learning-items/:id', async c => {
-  const id = Number.parseInt(c.req.param('id'));
-  if (!Number.isSafeInteger(id)) return c.json({ error: 'Validation error', message: 'Invalid learning item ID.' }, 400);
-  return await deleteLearningItem(c.env.DB, id)
-    ? c.json({ deleted: true, id })
-    : c.json({ error: 'Not found', message: 'Learning item was not found.' }, 404);
+api.delete('/api/cards/:id', async c => {
+  const id = idParam(c.req.param('id'));
+  if (!await deleteCard(c.env.DB, id)) throw new ApiError(404, 'Not found', 'Card was not found.');
+  return c.json({ deleted: true, id });
 });
 
 api.get('/api/stats', async c => c.json(await getDailyStats(c.env.DB)));
+
+// Same response shape the Chrome extension used with Noji's scheduler, now backed by D1.
 api.get('/api/review/due', async c => {
-  try { return c.json({ card: await getRandomDueCard(c.env) }); }
-  catch (error) { console.error('Noji due-card request failed', error); return c.json({ error: 'Noji review failed', message: error instanceof Error ? error.message : 'Unknown error' }, 502); }
+  const due = await getDueCards(c.env.DB);
+  const card = due.length ? due[Math.floor(Math.random() * due.length)] : null;
+  return c.json({ card: card ? toReviewCard(card) : null, dueCount: due.length });
 });
+
 api.post('/api/review/answer', async c => {
-  try { return c.json(await answerNojiCard(c.env, reviewAnswerSchema.parse(await c.req.json()))); }
-  catch (error) {
-    console.error('Noji answer failed', error);
-    if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
-    return c.json({ error: 'Noji review failed', message: error instanceof Error ? error.message : 'Unknown error' }, 502);
-  }
+  const input = reviewAnswerSchema.parse(await c.req.json());
+  const card = await getCard(c.env.DB, idParam(input.cardId));
+  if (!card) throw new ApiError(404, 'Not found', 'Card was not found.');
+  const updated = await reviewCard(c.env.DB, card, input.answer, input.reviewDurationMs);
+  return c.json({ status: 'accepted', card: updated, stats: await getDailyStats(c.env.DB) });
 });
 
-api.post('/api/conversations', async c => {
-  try { return c.json({ conversation: await createConversation(c.env) }); }
-  catch (error) { console.error('Conversation generation failed', error); return c.json({ error: 'Conversation failed', message: error instanceof Error ? error.message : 'Unknown error' }, 502); }
-});
-api.post('/api/conversations/audio', async c => {
-  try { return await synthesizeConversation(c.env, audioSchema.parse(await c.req.json()).transcript); }
-  catch (error) {
-    console.error('Conversation audio failed', error);
-    if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
-    return c.json({ error: 'Audio failed', message: error instanceof Error ? error.message : 'Unknown error' }, 502);
-  }
+// Captured text (e.g. from the Chrome extension) waits as a candidate until the dashboard offers it.
+api.post('/api/candidates', async c => {
+  const input = candidateSchema.parse(await c.req.json());
+  const added = await addCandidates(c.env.DB, [{ phrase: input.text, example: input.context, source: input.source }]);
+  return c.json({ added }, 201);
 });
 
+api.post('/api/candidates/:id/:action{snooze|dismiss}', async c => {
+  const id = idParam(c.req.param('id'));
+  const done = c.req.param('action') === 'snooze' ? await snoozeCandidate(c.env.DB, id) : await setCandidateStatus(c.env.DB, id, 'dismissed');
+  if (!done) throw new ApiError(404, 'Not found', 'Phrase was not found.');
+  return c.json({ ok: true });
+});
+
+// One chunk of a book per request; the browser drives the loop so each request stays small.
+api.post('/api/import/extract', async c => {
+  const input = extractSchema.parse(await c.req.json());
+  return c.json(await extractPhrases(c.env, input.text, input.source));
+});
+
+api.post('/api/conversations', async c => c.json({ conversation: await createConversation(c.env) }));
+api.post('/api/conversations/audio', async c => synthesizeConversation(c.env, audioSchema.parse(await c.req.json()).transcript));

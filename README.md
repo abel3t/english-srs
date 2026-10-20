@@ -1,16 +1,14 @@
 # English SRS
 
-A personal English learning assistant deployed on Cloudflare Workers. It analyzes English encountered in real life, recommends what is worth memorizing, stores learning history in D1, and saves approved cards to Noji.
+A personal English learning system on Cloudflare Workers. It finds phrases worth learning in the books and PDFs you read, lets you analyze any phrase you meet, schedules reviews itself, and copies every card to Noji.
 
 ## Learning workflow
 
-1. Open `/learn` and paste at least three words.
-2. Optionally provide context, the exact confusing part, and your interpretation in English or Vietnamese.
-3. Gemma 4 improves the title without changing its contextual meaning and explains real-world use, tone, register, and cultural risk.
-4. D1 history helps identify duplicate or recurring language.
-5. Review and edit the preview, then choose **Save to Noji** or **Skip for now**.
-
-Analysis never saves to Noji automatically. Skipped items remain in private D1 history so repeated encounters on different days can influence later recommendations.
+1. **Import** a PDF or EPUB and pick chapters. The browser parses the file; small chunks are sent to the AI, which picks reusable phrases with their original sentence. Only those phrases are stored — never the book.
+2. **Today** offers one random waiting phrase: *Yes, learn it* (opens Learn), *Not now* (asks again in 3 days), or *Never*. Phrases captured with the Chrome extension wait here too.
+3. **Learn** analyzes a phrase (meaning, use, tone, IPA, examples). Analysis is a preview only; nothing is stored until you press **Save card**.
+4. Saved cards live in D1 with their own review schedule (SM-2 style) and are copied to Noji. If the Noji copy fails, the card is still saved and can be re-synced from **Cards**.
+5. **Review** due cards (fill in the blank → full phrase with audio → explanation → Again/Hard/Good/Easy), and **Listen** to conversations built from the phrases you are learning.
 
 ## Runtime architecture
 
@@ -23,7 +21,7 @@ Cloudflare Worker (src/server.ts)
     └── Noji card creation and review
 
 Cloudflare D1
-└── Learning history, recommendations, recurrence, Save/Skip decisions
+└── Cards, review history, and phrases waiting to be offered (books are never stored)
 ```
 
 There is no Node server, PM2, local SQLite file, Qdrant, or persistent filesystem.
@@ -124,31 +122,36 @@ https://YOUR-WORKER.workers.dev/
 
 | Route | Method | Purpose |
 |---|---:|---|
-| `/` | GET | Learning dashboard |
+| `/` | GET | Today: due count, random "learn this phrase?" prompt, recent cards |
+| `/review` | GET | Review due cards |
+| `/learn` | GET | Analyze → edit → save as a card (`?candidate=<id>` pre-fills a suggested phrase) |
+| `/import` | GET | Parse a PDF/EPUB in the browser and extract phrases |
+| `/listen` | GET | Two-speaker conversation from your cards, with Gemini TTS |
+| `/cards` | GET | Search cards, see schedule and Noji sync status, retry sync, delete |
 | `/health` | GET | Service health check |
-| `/learn` | GET | Analyze, preview, edit, Save/Skip interface |
-| `/cards` | GET | Redirect to `/learn` for old bookmarks |
-| `/listen` | GET | Turn ~10 due Noji phrases into a two-speaker conversation and listen to it |
-| `/history` | GET | Search and filter D1 learning history |
-| `/api/analyze` | POST | Analyze and create a pending D1 item; never saves to Noji |
-| `/api/learning-items/:id/save` | POST | Save an approved or edited item to Noji |
-| `/api/learning-items/:id/skip` | POST | Keep an item in history without creating a Noji card |
-| `/api/learning-items/:id` | DELETE | Permanently delete one D1 history row; does not delete a Noji card |
-| `/api/conversations` | POST | Pick ~10 due Noji cards (topped up from saved history) and write a conversation with Ollama |
-| `/api/conversations/audio` | POST | Proxy a `Alex:`/`Sam:` transcript to Gemini multi-speaker TTS; the browser builds the WAV |
-| `/api/stats` | GET | Today’s analyzed/saved/skipped counts |
-| `/api/review/due` | GET | Start a Noji session and return one random due card |
-| `/api/review/answer` | POST | Submit Again/Hard/Good/Easy to Noji's scheduler |
+| `/api/analyze` | POST | Analyze text; stores nothing |
+| `/api/cards` | POST | Save a card to D1 and copy it to Noji |
+| `/api/cards/:id/sync` | POST | Retry the Noji copy |
+| `/api/cards/:id` | DELETE | Delete a card and its review history (the Noji copy remains) |
+| `/api/review/due` | GET | One random due card with interval previews |
+| `/api/review/answer` | POST | Record Again/Hard/Good/Easy and reschedule |
+| `/api/candidates` | POST | Capture a phrase for later (Chrome extension) |
+| `/api/candidates/:id/snooze` | POST | Ask again in 3 days |
+| `/api/candidates/:id/dismiss` | POST | Never offer this phrase again |
+| `/api/import/extract` | POST | Extract phrases from one chunk of book text |
+| `/api/conversations` | POST | Write a conversation from ~10 cards |
+| `/api/conversations/audio` | POST | Proxy a transcript to Gemini multi-speaker TTS |
+| `/api/stats` | GET | Today's added/reviewed/due counts |
 
 ## Chrome capture extension
 
-The unpacked Manifest V3 extension in `extension/` provides both a capture inbox and a compact Noji review flow. Review mode shows a random fill-in-the-blank prompt, then the full title, then the explanation and Noji's Again/Hard/Good/Easy choices with their real intervals.
+The unpacked Manifest V3 extension in `extension/` captures phrases for later (they appear on **Today**) and offers a compact review of due cards: a fill-in-the-blank prompt, then the full phrase, then the explanation and Again/Hard/Good/Easy with their next intervals.
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Choose **Load unpacked** and select this repository's `extension` directory.
 4. Pin **English SRS Capture** to the toolbar.
-5. Confirm captured items later from `/history`, or use **Review due** to study Noji cards.
+5. Captured phrases are offered on the dashboard; use **Review due** to study due cards.
 
 ## D1 backups
 
@@ -160,4 +163,4 @@ pnpm exec wrangler d1 export english-srs --remote --output english-srs-backup.sq
 
 ## Security
 
-Protect the deployed Worker with Cloudflare Access before using it as a personal application. Otherwise, anyone who discovers the URL could read learning history, consume Ollama quota, create Noji cards, or alter Noji review progress.
+Protect the deployed Worker with Cloudflare Access before using it as a personal application. Otherwise, anyone who discovers the URL could read your cards, consume Ollama and Gemini quota, or create Noji cards.
