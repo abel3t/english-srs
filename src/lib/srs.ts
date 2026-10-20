@@ -2,6 +2,7 @@
 // review cards grow by their ease factor. Kept dependency-free so the browser can preview intervals too.
 export type Rating = 'again' | 'hard' | 'good' | 'easy';
 export type CardState = 'new' | 'learning' | 'review';
+export type ReviewMode = 'classic' | 'dictation' | 'typing';
 export type Schedule = { state: CardState; intervalDays: number; ease: number; reps: number; lapses: number };
 export type NextSchedule = Schedule & { dueAt: Date };
 

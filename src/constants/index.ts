@@ -90,6 +90,8 @@ export const CONVERSATION_SPEAKERS = [
   { name: 'Sam', voice: 'Puck' },
 ] as const;
 export const CONVERSATION_PHRASE_COUNT = 10;
+export const CLIP_VOICE = 'Fola' as const;
+export const MAX_CLIP_CHARS = 400;
 
 export function getConversationPrompt(phrases: string[]): string {
   const [first, second] = CONVERSATION_SPEAKERS.map(speaker => speaker.name);
@@ -114,9 +116,11 @@ Return ONLY valid JSON with exactly this shape. Do not use Markdown fences:
 `.trim();
 }
 
-export function getSpeechPrompt(transcript: string): string {
-  return `Read this as a relaxed, natural conversation between two American friends, at a normal everyday speaking pace with clear pronunciation:\n\n${transcript}`;
-}
+// The TTS model reads any instruction text aloud, so it gets only the words to speak.
+// Bump CLIP_VERSION whenever what is sent changes, so previously saved clips are not reused.
+export const CLIP_VERSION = 2;
+export const getClipPrompt = (text: string) => text;
+export const getSpeechPrompt = (transcript: string) => transcript;
 
 export const EXTRACTION_PROMPT_VERSION = 'phrase-extraction-v1' as const;
 export const MAX_PHRASES_PER_CHUNK = 6;

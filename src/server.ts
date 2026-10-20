@@ -13,7 +13,7 @@ export default {
       : await handler.fetch(request);
     const secured = new Response(response.body, response);
     secured.headers.set('X-Content-Type-Options', 'nosniff');
-    secured.headers.set('Cache-Control', 'no-store');
+    if (!secured.headers.has('Cache-Control')) secured.headers.set('Cache-Control', 'no-store');
     return secured;
   },
 } satisfies ExportedHandler<Bindings>;

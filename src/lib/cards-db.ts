@@ -1,4 +1,4 @@
-import { nextSchedule, type CardState, type Rating } from './srs';
+import { nextSchedule, type CardState, type Rating, type ReviewMode } from './srs';
 import { ftsQuery, normalizeText, startOfLearningDay } from './text';
 
 
@@ -112,14 +112,14 @@ export async function getPracticeCards(db: D1Database, limit: number): Promise<C
   return result.results.map(fromRow);
 }
 
-export async function reviewCard(db: D1Database, card: Card, rating: Rating, durationMs: number): Promise<Card> {
+export async function reviewCard(db: D1Database, card: Card, rating: Rating, review: { durationMs: number; mode: ReviewMode; accuracy?: number }): Promise<Card> {
   const now = new Date();
   const next = nextSchedule(card, rating, now);
   await db.batch([
     db.prepare('UPDATE cards SET state=?1, interval_days=?2, ease=?3, reps=?4, lapses=?5, due_at=?6, last_reviewed_at=?7, updated_at=?7 WHERE id=?8')
       .bind(next.state, next.intervalDays, next.ease, next.reps, next.lapses, next.dueAt.toISOString(), now.toISOString(), card.id),
-    db.prepare('INSERT INTO reviews (card_id, rating, state_before, interval_before, interval_after, duration_ms, reviewed_at) VALUES (?1,?2,?3,?4,?5,?6,?7)')
-      .bind(card.id, rating, card.state, card.intervalDays, next.intervalDays, durationMs, now.toISOString()),
+    db.prepare('INSERT INTO reviews (card_id, rating, state_before, interval_before, interval_after, duration_ms, mode, accuracy, reviewed_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)')
+      .bind(card.id, rating, card.state, card.intervalDays, next.intervalDays, review.durationMs, review.mode, review.accuracy ?? null, now.toISOString()),
   ]);
   const updated = await getCard(db, card.id);
   if (!updated) throw new Error('Card disappeared during review');

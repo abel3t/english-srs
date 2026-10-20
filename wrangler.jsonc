@@ -16,5 +16,11 @@
       "database_id": "407834ef-3a4d-40f0-bb14-5c658bb0a679",
       "migrations_dir": "migrations"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "AUDIO",
+      "bucket_name": "english-srs-audio"
+    }
   ]
 }

@@ -2,9 +2,10 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
-import { CONVERSATION_SPEAKERS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
+import { CONVERSATION_SPEAKERS, MAX_CLIP_CHARS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
 import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
 import { addCandidates, setCandidateStatus, snoozeCandidate } from '../lib/candidates-db';
+import { getClip, normalizeClipText } from '../lib/clips';
 import { createConversation, synthesizeConversation } from '../lib/conversation';
 import { analyzeLearningInput } from '../lib/learning-analysis';
 import { extractPhrases } from '../lib/phrase-extraction';
@@ -43,6 +44,7 @@ const cardSchema = z.object({
 const reviewAnswerSchema = z.object({
   cardId: z.union([z.string(), z.number()]).transform(String), answer: z.enum(['again', 'hard', 'good', 'easy']),
   reviewDurationMs: z.number().int().min(0).max(3_600_000),
+  mode: z.enum(['classic', 'dictation', 'typing']).default('classic'), accuracy: z.number().min(0).max(1).optional(),
 });
 const candidateSchema = z.object({ text: z.string().trim().min(1).max(500), context: z.string().trim().max(1500).optional(), source: z.string().trim().max(200).default('Chrome extension') });
 const extractSchema = z.object({ text: z.string().trim().min(1).max(12_000), source: z.string().trim().max(200).optional() });
@@ -99,7 +101,7 @@ api.post('/api/review/answer', async c => {
   const input = reviewAnswerSchema.parse(await c.req.json());
   const card = await getCard(c.env.DB, idParam(input.cardId));
   if (!card) throw new ApiError(404, 'Not found', 'Card was not found.');
-  const updated = await reviewCard(c.env.DB, card, input.answer, input.reviewDurationMs);
+  const updated = await reviewCard(c.env.DB, card, input.answer, { durationMs: input.reviewDurationMs, mode: input.mode, accuracy: input.accuracy });
   return c.json({ status: 'accepted', card: updated, stats: await getDailyStats(c.env.DB) });
 });
 
@@ -121,6 +123,14 @@ api.post('/api/candidates/:id/:action{snooze|dismiss}', async c => {
 api.post('/api/import/extract', async c => {
   const input = extractSchema.parse(await c.req.json());
   return c.json(await extractPhrases(c.env, input.text, input.source));
+});
+
+// GET so <audio src> can point straight at it; clips are immutable, so the browser may cache them.
+api.get('/api/audio', async c => {
+  const text = normalizeClipText(c.req.query('text') ?? '');
+  if (!text || text.length > MAX_CLIP_CHARS) throw new ApiError(400, 'Validation error', `Text must be 1–${MAX_CLIP_CHARS} characters.`);
+  const clip = await getClip(c.env, text);
+  return new Response(clip.body, { headers: { 'Content-Type': clip.contentType, 'Cache-Control': 'private, max-age=31536000, immutable' } });
 });
 
 api.post('/api/conversations', async c => c.json({ conversation: await createConversation(c.env) }));

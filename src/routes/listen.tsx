@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { errorMessage, postJson } from '@/lib/api-client';
 import type { Conversation } from '@/lib/conversation';
-import { geminiAudioToWav } from '@/lib/wav';
+import { geminiAudioToBlob } from '@/lib/wav';
 
 export const Route = createFileRoute('/listen')({
   head: () => ({ meta: [{ title: 'Listen · English SRS' }] }),
@@ -20,7 +20,7 @@ const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$
 function Listen() {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [transcript, setTranscript] = useState('');
-  const [audio, setAudio] = useState<{ url: string; transcript: string } | null>(null);
+  const [audio, setAudio] = useState<{ url: string; transcript: string; extension: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
 
@@ -41,13 +41,13 @@ function Listen() {
     setBusy(true); setStatus({ type: 'info', text: 'Generating audio… this can take up to a minute.' });
     try {
       const text = transcript.trim();
-      const wav = geminiAudioToWav(await postJson('/api/conversations/audio', { transcript: text }));
-      setAudio({ url: URL.createObjectURL(wav), transcript: text }); setStatus(null);
+      const blob = geminiAudioToBlob(await postJson('/api/conversations/audio', { transcript: text }));
+      setAudio({ url: URL.createObjectURL(blob), transcript: text, extension: blob.type.split('/')[1]?.replace('mpeg', 'mp3') || 'wav' }); setStatus(null);
     } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
     finally { setBusy(false); }
   }
 
-  const fileName = `${(conversation?.title || 'conversation').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.wav`;
+  const fileName = `${(conversation?.title || 'conversation').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${audio?.extension ?? 'wav'}`;
 
   return (
     <>
@@ -82,7 +82,7 @@ function Listen() {
         <Card className="mt-4">
           <CardContent className="grid gap-4">
             <audio controls src={audio.url} className="w-full" />
-            <div><Button variant="secondary" asChild><a href={audio.url} download={fileName}>Download WAV</a></Button></div>
+            <div><Button variant="secondary" asChild><a href={audio.url} download={fileName}>Download audio</a></Button></div>
             <ReadAlong transcript={audio.transcript} phrases={conversation.usedPhrases} />
           </CardContent>
         </Card>

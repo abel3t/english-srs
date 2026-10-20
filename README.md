@@ -8,7 +8,12 @@ A personal English learning system on Cloudflare Workers. It finds phrases worth
 2. **Today** offers one random waiting phrase: *Yes, learn it* (opens Learn), *Not now* (asks again in 3 days), or *Never*. Phrases captured with the Chrome extension wait here too.
 3. **Learn** analyzes a phrase (meaning, use, tone, IPA, examples). Analysis is a preview only; nothing is stored until you press **Save card**.
 4. Saved cards live in D1 with their own review schedule (SM-2 style).
-5. **Review** due cards (fill in the blank → full phrase with audio → explanation → Again/Hard/Good/Easy), and **Listen** to conversations built from the phrases you are learning.
+5. **Review** due cards in one of three modes, then rate Again/Hard/Good/Easy (keys 1–4):
+   - **Recall** — fill in the blank in your head, reveal the phrase with audio, read the explanation.
+   - **Dictation** — hear the sentence (normal or slow), type it, and see missed/wrong words with listening tips (unstressed small words, word endings, contractions).
+   - **Type it** — see the meaning and the sentence with a gap, type the missing expression from memory with letter-by-letter feedback.
+   Dictation and Type it suggest a rating from your accuracy; each review records its mode and accuracy.
+6. **Listen** to conversations built from the phrases you are learning.
 
 ## Runtime architecture
 
@@ -17,10 +22,13 @@ Cloudflare Worker (src/server.ts)
 ├── /api/*, /health  → Hono JSON API (src/api/app.ts), also used by the Chrome extension
 └── everything else  → TanStack Start (React + shadcn/ui) pages in src/routes
     ├── Ollama Cloud analysis and conversation writing
-    └── Gemini multi-speaker TTS
+    └── Gemini TTS (sentence clips and two-speaker conversations)
 
 Cloudflare D1
 └── Cards, review history, and phrases waiting to be offered (books are never stored)
+
+Cloudflare R2 (english-srs-audio)
+└── One saved audio clip per sentence, so each is synthesized only once
 ```
 
 There is no Node server, PM2, local SQLite file, Qdrant, or persistent filesystem.
@@ -61,7 +69,13 @@ Create D1:
 pnpm exec wrangler d1 create english-srs
 ```
 
-Copy the returned `database_id` into `wrangler.jsonc`, replacing:
+Create the R2 bucket for saved audio clips (R2 must be enabled on the account; the free tier includes 10 GB):
+
+```bash
+pnpm exec wrangler r2 bucket create english-srs-audio
+```
+
+Copy the D1 `database_id` into `wrangler.jsonc`, replacing:
 
 ```text
 REPLACE_WITH_D1_DATABASE_ID
@@ -126,11 +140,12 @@ https://YOUR-WORKER.workers.dev/
 | `/api/cards` | POST | Save a card |
 | `/api/cards/:id` | DELETE | Delete a card and its review history |
 | `/api/review/due` | GET | One random due card with interval previews |
-| `/api/review/answer` | POST | Record Again/Hard/Good/Easy and reschedule |
+| `/api/review/answer` | POST | Record Again/Hard/Good/Easy (with review mode and accuracy) and reschedule |
 | `/api/candidates` | POST | Capture a phrase for later (Chrome extension) |
 | `/api/candidates/:id/snooze` | POST | Ask again in 3 days |
 | `/api/candidates/:id/dismiss` | POST | Never offer this phrase again |
 | `/api/import/extract` | POST | Extract phrases from one chunk of book text |
+| `/api/audio?text=` | GET | Saved audio clip for a sentence (made with Gemini on first request) |
 | `/api/conversations` | POST | Write a conversation from ~10 cards |
 | `/api/conversations/audio` | POST | Proxy a transcript to Gemini multi-speaker TTS |
 | `/api/stats` | GET | Today's added/reviewed/due counts |
