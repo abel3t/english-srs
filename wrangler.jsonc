@@ -1,8 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "english-srs",
-  "main": "src/worker.ts",
+  "account_id": "c18f977cd2f14dba42041672d8472f03",
+  "main": "src/server.ts",
   "compatibility_date": "2026-08-26",
+  "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "vars": {
     "OLLAMA_BASE_URL": "https://ollama.com"

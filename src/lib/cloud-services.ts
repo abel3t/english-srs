@@ -89,25 +89,27 @@ function plainCardText(side: { preview?: string; rawHtml?: string } | undefined)
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').trim();
 }
 
-export async function getRandomDueCard(env: Bindings): Promise<DueCard | null> {
+export async function getDueCards(env: Bindings, limit = 20): Promise<DueCard[]> {
   const token = await getNojiToken(env);
   const deckId = Number.parseInt(env.NOJI_DECK_ID);
   const sessionTimestamp = Math.floor(Date.now() / 1000);
   const headers = nojiHeaders(token);
   const start = await fetch(`${nojiBaseUrl}/v2/learning/start?deck_id=${deckId}&learn_session_start_timestamp=${sessionTimestamp}`, { headers });
   if (!start.ok) throw await responseError(start, 'Noji learning session');
-  const response = await fetch(`${nojiBaseUrl}/v2/learning/cards?deck_id=${deckId}&limit=20&learn_session_start_timestamp=${sessionTimestamp}`, { headers });
+  const response = await fetch(`${nojiBaseUrl}/v2/learning/cards?deck_id=${deckId}&limit=${limit}&learn_session_start_timestamp=${sessionTimestamp}`, { headers });
   if (!response.ok) throw await responseError(response, 'Noji due cards');
   const body = await response.json() as { cards?: NojiLearningCard[] };
-  const cards = (body.cards ?? []).filter(item => item.card?.id != null && plainCardText(item.card.front) && plainCardText(item.card.back));
-  if (!cards.length) return null;
-  const selected = cards[Math.floor(Math.random() * cards.length)];
   const allowed = new Set<NojiAnswer>(['again', 'hard', 'good', 'easy']);
-  return {
+  return (body.cards ?? []).filter(item => item.card?.id != null && plainCardText(item.card.front) && plainCardText(item.card.back)).map(selected => ({
     cardId: String(selected.card!.id), deckId, sessionTimestamp,
     front: plainCardText(selected.card!.front), back: plainCardText(selected.card!.back),
     answerButtons: (selected.answerButtons ?? []).filter((button): button is { type: NojiAnswer; repeat: string } => allowed.has(button.type as NojiAnswer) && typeof button.repeat === 'string'),
-  };
+  }));
+}
+
+export async function getRandomDueCard(env: Bindings): Promise<DueCard | null> {
+  const cards = await getDueCards(env);
+  return cards.length ? cards[Math.floor(Math.random() * cards.length)] : null;
 }
 
 export async function answerNojiCard(env: Bindings, input: { cardId: string; sessionTimestamp: number; answer: NojiAnswer; reviewDurationMs: number }): Promise<{ status: string }> {

@@ -15,10 +15,12 @@ Analysis never saves to Noji automatically. Skipped items remain in private D1 h
 ## Runtime architecture
 
 ```text
-Cloudflare Worker
-├── Dashboard, learning form, history, and JSON APIs
-├── Ollama Cloud analysis
-└── Noji card creation
+Cloudflare Worker (src/server.ts)
+├── /api/*, /health  → Hono JSON API (src/api/app.ts), also used by the Chrome extension
+└── everything else  → TanStack Start (React + shadcn/ui) pages in src/routes
+    ├── Ollama Cloud analysis and conversation writing
+    ├── Gemini multi-speaker TTS
+    └── Noji card creation and review
 
 Cloudflare D1
 └── Learning history, recommendations, recurrence, Save/Skip decisions
@@ -37,7 +39,7 @@ pnpm db:migrate:local
 pnpm dev
 ```
 
-Wrangler normally serves the application at `http://localhost:8787`.
+Vite (with the Cloudflare plugin, so D1 and secrets behave like production) serves the application at `http://localhost:8787`.
 
 Fill `.dev.vars` with local secrets:
 
@@ -46,6 +48,7 @@ OLLAMA_API_KEY=...
 NOJI_EMAIL=...
 NOJI_PASSWORD=...
 NOJI_DECK_ID=...
+GEMINI_API_KEY=...
 ```
 
 `.dev.vars`, `.env`, and Wrangler local state are excluded from Git.
@@ -77,6 +80,7 @@ pnpm exec wrangler secret put OLLAMA_API_KEY
 pnpm exec wrangler secret put NOJI_EMAIL
 pnpm exec wrangler secret put NOJI_PASSWORD
 pnpm exec wrangler secret put NOJI_DECK_ID
+pnpm exec wrangler secret put GEMINI_API_KEY
 ```
 
 Apply the schema and deploy:
@@ -98,9 +102,11 @@ pnpm run deploy
 ## Verification
 
 ```bash
-pnpm typecheck
-pnpm build
+pnpm build                          # vite build + tsc --noEmit
+pnpm exec wrangler deploy --dry-run # validate the generated Worker config without uploading
 ```
+
+After changing `wrangler.jsonc`, run `pnpm cf-typegen` to refresh `worker-configuration.d.ts`.
 
 After deployment:
 
@@ -122,11 +128,14 @@ https://YOUR-WORKER.workers.dev/
 | `/health` | GET | Service health check |
 | `/learn` | GET | Analyze, preview, edit, Save/Skip interface |
 | `/cards` | GET | Redirect to `/learn` for old bookmarks |
+| `/listen` | GET | Turn ~10 due Noji phrases into a two-speaker conversation and listen to it |
 | `/history` | GET | Search and filter D1 learning history |
 | `/api/analyze` | POST | Analyze and create a pending D1 item; never saves to Noji |
 | `/api/learning-items/:id/save` | POST | Save an approved or edited item to Noji |
 | `/api/learning-items/:id/skip` | POST | Keep an item in history without creating a Noji card |
 | `/api/learning-items/:id` | DELETE | Permanently delete one D1 history row; does not delete a Noji card |
+| `/api/conversations` | POST | Pick ~10 due Noji cards (topped up from saved history) and write a conversation with Ollama |
+| `/api/conversations/audio` | POST | Proxy a `Alex:`/`Sam:` transcript to Gemini multi-speaker TTS; the browser builds the WAV |
 | `/api/stats` | GET | Today’s analyzed/saved/skipped counts |
 | `/api/review/due` | GET | Start a Noji session and return one random due card |
 | `/api/review/answer` | POST | Submit Again/Hard/Good/Easy to Noji's scheduler |
