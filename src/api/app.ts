@@ -3,9 +3,8 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { CONVERSATION_SPEAKERS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
-import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, setNojiSync, type Card } from '../lib/cards-db';
+import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
 import { addCandidates, setCandidateStatus, snoozeCandidate } from '../lib/candidates-db';
-import { createNojiNote } from '../lib/cloud-services';
 import { createConversation, synthesizeConversation } from '../lib/conversation';
 import { analyzeLearningInput } from '../lib/learning-analysis';
 import { extractPhrases } from '../lib/phrase-extraction';
@@ -53,18 +52,6 @@ const audioSchema = z.object({ transcript: z.string().trim().min(1).max(8000).re
   `Every line must start with ${CONVERSATION_SPEAKERS.map(speaker => `"${speaker.name}:"`).join(' or ')}.`,
 ) });
 
-// D1 is the source of truth; Noji is a best-effort copy that can be retried from the Cards page.
-async function syncToNoji(env: Bindings, card: Card): Promise<Card> {
-  try {
-    const noteId = await createNojiNote(env, card.phrase, card.explanation);
-    await setNojiSync(env.DB, card.id, { status: 'synced', noteId });
-  } catch (error) {
-    console.error('Noji sync failed', error);
-    await setNojiSync(env.DB, card.id, { status: 'failed', error: error instanceof Error ? error.message : 'Unknown error' });
-  }
-  return (await getCard(env.DB, card.id)) ?? card;
-}
-
 export function toReviewCard(card: Card) {
   return {
     cardId: String(card.id), front: card.phrase, back: card.explanation, keyExpression: card.keyExpression,
@@ -90,14 +77,7 @@ api.post('/api/cards', async c => {
     model: OLLAMA_MODEL, promptVersion: PROMPT_VERSION,
   });
   if (input.candidateId) await setCandidateStatus(c.env.DB, input.candidateId, 'learned');
-  return c.json({ card: await syncToNoji(c.env, card), stats: await getDailyStats(c.env.DB) }, 201);
-});
-
-api.post('/api/cards/:id/sync', async c => {
-  const card = await getCard(c.env.DB, idParam(c.req.param('id')));
-  if (!card) throw new ApiError(404, 'Not found', 'Card was not found.');
-  if (card.nojiSyncStatus === 'synced') throw new ApiError(409, 'Already synced', 'This card is already in Noji.');
-  return c.json({ card: await syncToNoji(c.env, card) });
+  return c.json({ card, stats: await getDailyStats(c.env.DB) }, 201);
 });
 
 api.delete('/api/cards/:id', async c => {
@@ -108,7 +88,7 @@ api.delete('/api/cards/:id', async c => {
 
 api.get('/api/stats', async c => c.json(await getDailyStats(c.env.DB)));
 
-// Same response shape the Chrome extension used with Noji's scheduler, now backed by D1.
+// Response shape kept from the original Chrome extension review flow.
 api.get('/api/review/due', async c => {
   const due = await getDueCards(c.env.DB);
   const card = due.length ? due[Math.floor(Math.random() * due.length)] : null;

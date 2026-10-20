@@ -1,7 +1,6 @@
-import { Link, createFileRoute } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
-import { SyncBadge } from '@/components/card-badges';
 import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
@@ -109,8 +108,6 @@ function Learn({ candidate }: { candidate: Candidate | null }) {
         <Card className="mt-4 border-emerald-200 bg-emerald-50">
           <CardContent className="flex flex-wrap items-center gap-2 text-sm text-emerald-900">
             <span>Saved “{saved.card.phrase}”. It will show up in your next review.</span>
-            <SyncBadge status={saved.card.nojiSyncStatus} />
-            {saved.card.nojiSyncError && <span className="text-red-700">{saved.card.nojiSyncError} — retry from <Link to="/cards" className="underline">Cards</Link>.</span>}
             <span className="ml-auto text-muted-foreground">Today: {saved.stats.added} added · {saved.stats.reviewed} reviewed</span>
           </CardContent>
         </Card>

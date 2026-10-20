@@ -1,13 +1,13 @@
 # English SRS
 
-A personal English learning system on Cloudflare Workers. It finds phrases worth learning in the books and PDFs you read, lets you analyze any phrase you meet, schedules reviews itself, and copies every card to Noji.
+A personal English learning system on Cloudflare Workers. It finds phrases worth learning in the books and PDFs you read, lets you analyze any phrase you meet, and schedules your reviews.
 
 ## Learning workflow
 
 1. **Import** a PDF or EPUB and pick chapters. The browser parses the file; small chunks are sent to the AI, which picks reusable phrases with their original sentence. Only those phrases are stored — never the book.
 2. **Today** offers one random waiting phrase: *Yes, learn it* (opens Learn), *Not now* (asks again in 3 days), or *Never*. Phrases captured with the Chrome extension wait here too.
 3. **Learn** analyzes a phrase (meaning, use, tone, IPA, examples). Analysis is a preview only; nothing is stored until you press **Save card**.
-4. Saved cards live in D1 with their own review schedule (SM-2 style) and are copied to Noji. If the Noji copy fails, the card is still saved and can be re-synced from **Cards**.
+4. Saved cards live in D1 with their own review schedule (SM-2 style).
 5. **Review** due cards (fill in the blank → full phrase with audio → explanation → Again/Hard/Good/Easy), and **Listen** to conversations built from the phrases you are learning.
 
 ## Runtime architecture
@@ -17,8 +17,7 @@ Cloudflare Worker (src/server.ts)
 ├── /api/*, /health  → Hono JSON API (src/api/app.ts), also used by the Chrome extension
 └── everything else  → TanStack Start (React + shadcn/ui) pages in src/routes
     ├── Ollama Cloud analysis and conversation writing
-    ├── Gemini multi-speaker TTS
-    └── Noji card creation and review
+    └── Gemini multi-speaker TTS
 
 Cloudflare D1
 └── Cards, review history, and phrases waiting to be offered (books are never stored)
@@ -43,9 +42,6 @@ Fill `.dev.vars` with local secrets:
 
 ```env
 OLLAMA_API_KEY=...
-NOJI_EMAIL=...
-NOJI_PASSWORD=...
-NOJI_DECK_ID=...
 GEMINI_API_KEY=...
 ```
 
@@ -75,9 +71,6 @@ Add production secrets one at a time:
 
 ```bash
 pnpm exec wrangler secret put OLLAMA_API_KEY
-pnpm exec wrangler secret put NOJI_EMAIL
-pnpm exec wrangler secret put NOJI_PASSWORD
-pnpm exec wrangler secret put NOJI_DECK_ID
 pnpm exec wrangler secret put GEMINI_API_KEY
 ```
 
@@ -127,12 +120,11 @@ https://YOUR-WORKER.workers.dev/
 | `/learn` | GET | Analyze → edit → save as a card (`?candidate=<id>` pre-fills a suggested phrase) |
 | `/import` | GET | Parse a PDF/EPUB in the browser and extract phrases |
 | `/listen` | GET | Two-speaker conversation from your cards, with Gemini TTS |
-| `/cards` | GET | Search cards, see schedule and Noji sync status, retry sync, delete |
+| `/cards` | GET | Search cards, see their schedule, delete |
 | `/health` | GET | Service health check |
 | `/api/analyze` | POST | Analyze text; stores nothing |
-| `/api/cards` | POST | Save a card to D1 and copy it to Noji |
-| `/api/cards/:id/sync` | POST | Retry the Noji copy |
-| `/api/cards/:id` | DELETE | Delete a card and its review history (the Noji copy remains) |
+| `/api/cards` | POST | Save a card |
+| `/api/cards/:id` | DELETE | Delete a card and its review history |
 | `/api/review/due` | GET | One random due card with interval previews |
 | `/api/review/answer` | POST | Record Again/Hard/Good/Easy and reschedule |
 | `/api/candidates` | POST | Capture a phrase for later (Chrome extension) |
@@ -163,4 +155,4 @@ pnpm exec wrangler d1 export english-srs --remote --output english-srs-backup.sq
 
 ## Security
 
-Protect the deployed Worker with Cloudflare Access before using it as a personal application. Otherwise, anyone who discovers the URL could read your cards, consume Ollama and Gemini quota, or create Noji cards.
+Protect the deployed Worker with Cloudflare Access before using it as a personal application. Otherwise, anyone who discovers the URL could read your cards or consume your Ollama and Gemini quota.

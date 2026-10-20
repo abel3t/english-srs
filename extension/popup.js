@@ -61,8 +61,8 @@ document.getElementById('ratings').addEventListener('click', async event => {
   document.querySelectorAll('#ratings button').forEach(item => { item.disabled = true; });
   try {
     const response = await fetch(endpoint + '/api/review/answer', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ cardId:currentCard.cardId, sessionTimestamp:currentCard.sessionTimestamp, answer:button.dataset.answer, reviewDurationMs:Date.now()-reviewStartedAt }) });
-    const body = await response.json(); if (!response.ok) throw new Error(body.message || 'Noji did not accept the answer');
-    status.textContent = 'Review updated in Noji.'; status.className = 'success'; currentCard = null;
+    const body = await response.json(); if (!response.ok) throw new Error(body.message || 'Could not record the answer');
+    status.textContent = 'Review saved.'; status.className = 'success'; currentCard = null;
     document.getElementById('card').hidden = true; document.getElementById('getCard').hidden = false; document.getElementById('getCard').click();
   } catch (error) { status.textContent = error.message; status.className = 'error'; document.querySelectorAll('#ratings button').forEach(item => { item.disabled = false; }); }
 });

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { OLLAMA_MODEL, PROMPT_VERSION, getPrompt } from '../constants';
-import { generateWithOllama } from './cloud-services';
+import { generateWithOllama } from './ollama';
 import { findRelatedCards, type Card } from './cards-db';
 import { learningDateKey } from './text';
 

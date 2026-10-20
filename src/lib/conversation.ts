@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { CONVERSATION_PHRASE_COUNT, CONVERSATION_SPEAKERS, GEMINI_TTS_MODEL, getConversationPrompt, getSpeechPrompt } from '../constants';
 import { getPracticeCards } from './cards-db';
-import { generateWithOllama } from './cloud-services';
+import { generateWithOllama } from './ollama';
 
 const speakerNames = CONVERSATION_SPEAKERS.map(speaker => speaker.name) as [string, string];
 const generatedConversationSchema = z.object({

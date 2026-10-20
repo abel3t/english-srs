@@ -1,5 +1,5 @@
--- Start the learning system from scratch: D1 becomes the source of truth for cards and
--- their review schedule (Noji is a sync target), and analysis no longer writes history.
+-- Start the learning system from scratch: cards and their review schedule live only in D1
+-- (Noji is no longer used), and analysis no longer writes history.
 -- Books are never stored; only the phrases extracted from them are kept as candidates.
 DROP TABLE IF EXISTS learning_items_fts;
 DROP TABLE IF EXISTS learning_items;
@@ -20,9 +20,6 @@ CREATE TABLE cards (
   reps INTEGER NOT NULL DEFAULT 0,
   lapses INTEGER NOT NULL DEFAULT 0,
   last_reviewed_at TEXT,
-  noji_note_id TEXT,
-  noji_sync_status TEXT NOT NULL DEFAULT 'pending' CHECK (noji_sync_status IN ('pending', 'synced', 'failed')),
-  noji_sync_error TEXT,
   model TEXT NOT NULL,
   prompt_version TEXT NOT NULL,
   created_at TEXT NOT NULL,
@@ -32,7 +29,6 @@ CREATE TABLE cards (
 CREATE INDEX idx_cards_due ON cards(due_at);
 CREATE INDEX idx_cards_normalized ON cards(normalized_phrase);
 CREATE INDEX idx_cards_created ON cards(created_at);
-CREATE INDEX idx_cards_sync ON cards(noji_sync_status);
 
 CREATE VIRTUAL TABLE cards_fts USING fts5(
   card_id UNINDEXED,

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { MAX_PHRASES_PER_CHUNK, getExtractionPrompt } from '../constants';
 import { addCandidates } from './candidates-db';
-import { generateWithOllama } from './cloud-services';
+import { generateWithOllama } from './ollama';
 import { normalizeText } from './text';
 
 const extractionSchema = z.object({

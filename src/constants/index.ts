@@ -29,7 +29,7 @@ CARDS THE LEARNER ALREADY SAVED THAT MAY BE RELATED:
 ${related.length === 0 ? 'None found by local search.' : related.map(item => JSON.stringify(item)).join('\n')}
 
 MAIN SENTENCE:
-- Create the best natural title/front for a Noji card.
+- Create the best natural front for a flashcard.
 - Correct spelling, grammar, punctuation, word choice, and awkward phrasing when needed.
 - Preserve 100% of the meaning supported by the context. Never add, remove, strengthen, weaken, or guess information.
 - Prefer a small correction over a rewrite. Keep the original when a change could alter meaning.

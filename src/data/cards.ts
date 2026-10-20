@@ -7,7 +7,6 @@ import { getOverview, listCards } from '@/lib/cards-db';
 export const cardsSearchSchema = z.object({
   q: z.string().trim().max(200).optional().catch(undefined),
   state: z.enum(['new', 'learning', 'review']).optional().catch(undefined),
-  sync: z.enum(['pending', 'synced', 'failed']).optional().catch(undefined),
 });
 export type CardsSearch = z.infer<typeof cardsSearchSchema>;
 
@@ -19,7 +18,7 @@ export const getDashboard = createServerFn().handler(async () => ({
 
 export const getCards = createServerFn()
   .validator(cardsSearchSchema)
-  .handler(({ data }) => listCards(env.DB, { query: data.q, state: data.state, sync: data.sync, limit: 200 }));
+  .handler(({ data }) => listCards(env.DB, { query: data.q, state: data.state, limit: 200 }));
 
 export const getCandidateById = createServerFn()
   .validator(z.object({ id: z.number().int().positive() }))

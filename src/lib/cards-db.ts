@@ -1,7 +1,6 @@
 import { nextSchedule, type CardState, type Rating } from './srs';
 import { ftsQuery, normalizeText, startOfLearningDay } from './text';
 
-export type SyncStatus = 'pending' | 'synced' | 'failed';
 
 export type Card = {
   id: number;
@@ -18,9 +17,6 @@ export type Card = {
   reps: number;
   lapses: number;
   lastReviewedAt: string | null;
-  nojiNoteId: string | null;
-  nojiSyncStatus: SyncStatus;
-  nojiSyncError: string | null;
   createdAt: string;
 };
 
@@ -28,7 +24,7 @@ type CardRow = {
   id: number; phrase: string; explanation: string; key_expression: string; grammar_pattern: string;
   original_input: string | null; context: string | null;
   state: CardState; due_at: string; interval_days: number; ease: number; reps: number; lapses: number;
-  last_reviewed_at: string | null; noji_note_id: string | null; noji_sync_status: SyncStatus; noji_sync_error: string | null;
+  last_reviewed_at: string | null;
   created_at: string;
 };
 
@@ -43,8 +39,7 @@ function fromRow(row: CardRow): Card {
     id: row.id, phrase: row.phrase, explanation: row.explanation, keyExpression: row.key_expression,
     grammarPattern: row.grammar_pattern, originalInput: row.original_input, context: row.context, state: row.state, dueAt: row.due_at,
     intervalDays: row.interval_days, ease: row.ease, reps: row.reps, lapses: row.lapses,
-    lastReviewedAt: row.last_reviewed_at, nojiNoteId: row.noji_note_id, nojiSyncStatus: row.noji_sync_status,
-    nojiSyncError: row.noji_sync_error, createdAt: row.created_at,
+    lastReviewedAt: row.last_reviewed_at, createdAt: row.created_at,
   };
 }
 
@@ -75,11 +70,6 @@ export async function deleteCard(db: D1Database, id: number): Promise<boolean> {
   return (result.meta.changes ?? 0) > 0;
 }
 
-export async function setNojiSync(db: D1Database, id: number, sync: { status: SyncStatus; noteId?: string | null; error?: string | null }): Promise<void> {
-  await db.prepare('UPDATE cards SET noji_sync_status=?1, noji_note_id=COALESCE(?2,noji_note_id), noji_sync_error=?3, updated_at=?4 WHERE id=?5')
-    .bind(sync.status, sync.noteId ?? null, sync.error ?? null, new Date().toISOString(), id).run();
-}
-
 // Exact phrase matches first, then full-text matches, so the analyzer can flag duplicates and related cards.
 export async function findRelatedCards(db: D1Database, input: string, limit = 3): Promise<Card[]> {
   const normalized = normalizeText(input);
@@ -96,7 +86,7 @@ export async function findRelatedCards(db: D1Database, input: string, limit = 3)
   return [...cards, ...related.results.map(fromRow)];
 }
 
-export async function listCards(db: D1Database, options: { query?: string; state?: CardState; sync?: SyncStatus; limit?: number } = {}): Promise<Card[]> {
+export async function listCards(db: D1Database, options: { query?: string; state?: CardState; limit?: number } = {}): Promise<Card[]> {
   const conditions: string[] = [];
   const values: unknown[] = [];
   if (options.query?.trim()) {
@@ -105,7 +95,6 @@ export async function listCards(db: D1Database, options: { query?: string; state
     values.push(pattern, pattern, pattern);
   }
   if (options.state) { conditions.push('state = ?'); values.push(options.state); }
-  if (options.sync) { conditions.push('noji_sync_status = ?'); values.push(options.sync); }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
   const result = await db.prepare(`SELECT * FROM cards ${where} ORDER BY created_at DESC LIMIT ?`).bind(...values, limit).all<CardRow>();
@@ -150,15 +139,14 @@ export async function getDailyStats(db: D1Database): Promise<DailyStats> {
   return { added: row?.added ?? 0, reviewed: row?.reviewed ?? 0, due: row?.due ?? 0 };
 }
 
-export type Overview = DailyStats & { total: number; mature: number; unsynced: number; candidates: number };
+export type Overview = DailyStats & { total: number; mature: number; candidates: number };
 
 export async function getOverview(db: D1Database): Promise<Overview> {
   const row = await db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM cards) AS total,
       (SELECT COUNT(*) FROM cards WHERE state = 'review' AND interval_days >= 21) AS mature,
-      (SELECT COUNT(*) FROM cards WHERE noji_sync_status != 'synced') AS unsynced,
       (SELECT COUNT(*) FROM candidates WHERE status = 'pending') AS candidates
   `).first<Omit<Overview, keyof DailyStats>>();
-  return { ...await getDailyStats(db), total: row?.total ?? 0, mature: row?.mature ?? 0, unsynced: row?.unsynced ?? 0, candidates: row?.candidates ?? 0 };
+  return { ...await getDailyStats(db), total: row?.total ?? 0, mature: row?.mature ?? 0, candidates: row?.candidates ?? 0 };
 }

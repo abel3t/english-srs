@@ -1,5 +1,2 @@
 OLLAMA_API_KEY=your-ollama-api-key
-NOJI_EMAIL=your-email@example.com
-NOJI_PASSWORD=your-password
-NOJI_DECK_ID=your-sentence-deck-id
 GEMINI_API_KEY=your-gemini-api-key
