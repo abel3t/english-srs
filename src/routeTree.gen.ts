@@ -14,6 +14,7 @@ import { Route as CardsRouteImport } from './routes/cards'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as LearnRouteImport } from './routes/learn'
 import { Route as ListenRouteImport } from './routes/listen'
+import { Route as PhrasesRouteImport } from './routes/phrases'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SpeakRouteImport } from './routes/speak'
 
@@ -42,6 +43,11 @@ const ListenRoute = ListenRouteImport.update({
   path: '/listen',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PhrasesRoute = PhrasesRouteImport.update({
+  id: '/phrases',
+  path: '/phrases',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReviewRoute = ReviewRouteImport.update({
   id: '/review',
   path: '/review',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
   '/listen': typeof ListenRoute
+  '/phrases': typeof PhrasesRoute
   '/review': typeof ReviewRoute
   '/speak': typeof SpeakRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
   '/listen': typeof ListenRoute
+  '/phrases': typeof PhrasesRoute
   '/review': typeof ReviewRoute
   '/speak': typeof SpeakRoute
 }
@@ -78,15 +86,31 @@ export interface FileRoutesById {
   '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
   '/listen': typeof ListenRoute
+  '/phrases': typeof PhrasesRoute
   '/review': typeof ReviewRoute
   '/speak': typeof SpeakRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/cards' | '/import' | '/learn' | '/listen' | '/review' | '/speak'
+    | '/'
+    | '/cards'
+    | '/import'
+    | '/learn'
+    | '/listen'
+    | '/phrases'
+    | '/review'
+    | '/speak'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/cards' | '/import' | '/learn' | '/listen' | '/review' | '/speak'
+  to:
+    | '/'
+    | '/cards'
+    | '/import'
+    | '/learn'
+    | '/listen'
+    | '/phrases'
+    | '/review'
+    | '/speak'
   id:
     | '__root__'
     | '/'
@@ -94,6 +118,7 @@ export interface FileRouteTypes {
     | '/import'
     | '/learn'
     | '/listen'
+    | '/phrases'
     | '/review'
     | '/speak'
   fileRoutesById: FileRoutesById
@@ -104,6 +129,7 @@ export interface RootRouteChildren {
   ImportRoute: typeof ImportRoute
   LearnRoute: typeof LearnRoute
   ListenRoute: typeof ListenRoute
+  PhrasesRoute: typeof PhrasesRoute
   ReviewRoute: typeof ReviewRoute
   SpeakRoute: typeof SpeakRoute
 }
@@ -145,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ListenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/phrases': {
+      id: '/phrases'
+      path: '/phrases'
+      fullPath: '/phrases'
+      preLoaderRoute: typeof PhrasesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/review': {
       id: '/review'
       path: '/review'
@@ -168,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImportRoute: ImportRoute,
   LearnRoute: LearnRoute,
   ListenRoute: ListenRoute,
+  PhrasesRoute: PhrasesRoute,
   ReviewRoute: ReviewRoute,
   SpeakRoute: SpeakRoute,
 }

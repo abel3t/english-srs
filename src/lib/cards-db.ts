@@ -2,8 +2,11 @@ import { nextSchedule, type CardState, type Rating, type ReviewMode } from './sr
 import { ftsQuery, normalizeText, startOfLearningDay } from './text';
 
 
+export type CardGoal = 'understand' | 'use';
+
 export type Card = {
   id: number;
+  goal: CardGoal;
   phrase: string;
   explanation: string;
   keyExpression: string;
@@ -21,7 +24,7 @@ export type Card = {
 };
 
 type CardRow = {
-  id: number; phrase: string; explanation: string; key_expression: string; grammar_pattern: string;
+  id: number; goal: CardGoal; phrase: string; explanation: string; key_expression: string; grammar_pattern: string;
   original_input: string | null; context: string | null;
   state: CardState; due_at: string; interval_days: number; ease: number; reps: number; lapses: number;
   last_reviewed_at: string | null;
@@ -30,13 +33,13 @@ type CardRow = {
 
 export type NewCard = {
   phrase: string; explanation: string; keyExpression: string; grammarPattern: string;
-  originalInput: string | null; context: string | null;
+  originalInput: string | null; context: string | null; goal?: CardGoal;
   model: string; promptVersion: string;
 };
 
 function fromRow(row: CardRow): Card {
   return {
-    id: row.id, phrase: row.phrase, explanation: row.explanation, keyExpression: row.key_expression,
+    id: row.id, goal: row.goal, phrase: row.phrase, explanation: row.explanation, keyExpression: row.key_expression,
     grammarPattern: row.grammar_pattern, originalInput: row.original_input, context: row.context, state: row.state, dueAt: row.due_at,
     intervalDays: row.interval_days, ease: row.ease, reps: row.reps, lapses: row.lapses,
     lastReviewedAt: row.last_reviewed_at, createdAt: row.created_at,
@@ -47,10 +50,10 @@ export async function insertCard(db: D1Database, card: NewCard): Promise<Card> {
   const now = new Date().toISOString();
   const result = await db.prepare(`
     INSERT INTO cards (phrase, normalized_phrase, explanation, key_expression, grammar_pattern, original_input, context,
-      due_at, model, prompt_version, created_at, updated_at)
-    VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?8,?8)
+      due_at, model, prompt_version, created_at, updated_at, goal)
+    VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?8,?8,?11)
   `).bind(card.phrase, normalizeText(card.phrase), card.explanation, card.keyExpression, card.grammarPattern,
-    card.originalInput, card.context, now, card.model, card.promptVersion).run();
+    card.originalInput, card.context, now, card.model, card.promptVersion, card.goal ?? 'understand').run();
   const id = Number(result.meta.last_row_id);
   await db.prepare('INSERT INTO cards_fts (card_id, phrase, key_expression, grammar_pattern) VALUES (?1,?2,?3,?4)')
     .bind(id, card.phrase, card.keyExpression, card.grammarPattern).run();
@@ -107,8 +110,9 @@ export async function getDueCards(db: D1Database, limit = 20, now = new Date()):
 }
 
 // Cards to practice outside review (e.g. listening): soonest-due first, so struggling phrases come up more.
-export async function getPracticeCards(db: D1Database, limit: number): Promise<Card[]> {
-  const result = await db.prepare('SELECT * FROM cards ORDER BY due_at LIMIT ?1').bind(limit).all<CardRow>();
+export async function getPracticeCards(db: D1Database, limit: number, options: { preferUse?: boolean } = {}): Promise<Card[]> {
+  const order = options.preferUse ? "goal = 'use' DESC, due_at" : 'due_at';
+  const result = await db.prepare(`SELECT * FROM cards ORDER BY ${order} LIMIT ?1`).bind(limit).all<CardRow>();
   return result.results.map(fromRow);
 }
 

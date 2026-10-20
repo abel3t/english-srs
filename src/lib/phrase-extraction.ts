@@ -23,7 +23,7 @@ export async function extractPhrases(env: Bindings, text: string, source?: strin
   // Keep the example only when it really comes from the passage, so the learner always sees authentic context.
   const passage = normalizeText(text);
   const phrases = parsed.phrases.slice(0, MAX_PHRASES_PER_CHUNK).map(item => ({
-    phrase: item.phrase, meaning: item.meaning || null, source: source || null,
+    phrase: item.phrase, meaning: item.meaning || null, source: source || null, kind: 'ai' as const,
     example: item.example && passage.includes(normalizeText(item.example)) ? item.example : null,
   }));
   return { found: phrases.length, added: await addCandidates(env.DB, phrases) };

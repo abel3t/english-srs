@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { CONVERSATION_SPEAKERS, MAX_CLIP_CHARS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
 import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
-import { addCandidates, setCandidateStatus, snoozeCandidate } from '../lib/candidates-db';
+import { addCandidates, decideCandidate, getCandidate, setCandidateStatus, snoozeCandidate } from '../lib/candidates-db';
 import { getClip, normalizeClipText } from '../lib/clips';
 import { createConversation, synthesizeConversation } from '../lib/conversation';
 import { analyzeLearningInput } from '../lib/learning-analysis';
@@ -48,6 +48,14 @@ const reviewAnswerSchema = z.object({
   mode: z.enum(['classic', 'dictation', 'typing']).default('classic'), accuracy: z.number().min(0).max(1).optional(),
 });
 const candidateSchema = z.object({ text: z.string().trim().min(1).max(500), context: z.string().trim().max(1500).optional(), source: z.string().trim().max(200).default('Chrome extension') });
+const candidateBatchSchema = z.object({
+  source: z.string().trim().max(200).optional(),
+  items: z.array(z.object({
+    phrase: z.string().trim().min(2).max(120), example: z.string().trim().max(600).optional(),
+    kind: z.enum(['frame', 'phrasal_verb', 'idiom', 'prep_phrase', 'collocation', 'word']),
+    band: z.number().int().min(0).max(3), score: z.number().min(-5).max(20),
+  })).min(1).max(100),
+});
 const extractSchema = z.object({ text: z.string().trim().min(1).max(12_000), source: z.string().trim().max(200).optional() });
 const speakerLine = new RegExp(`^(${CONVERSATION_SPEAKERS.map(speaker => speaker.name).join('|')}): \\S`);
 const audioSchema = z.object({ transcript: z.string().trim().min(1).max(8000).refine(
@@ -109,15 +117,37 @@ api.post('/api/review/answer', async c => {
 // Captured text (e.g. from the Chrome extension) waits as a candidate until the dashboard offers it.
 api.post('/api/candidates', async c => {
   const input = candidateSchema.parse(await c.req.json());
-  const added = await addCandidates(c.env.DB, [{ phrase: input.text, example: input.context, source: input.source }]);
+  const added = await addCandidates(c.env.DB, [{ phrase: input.text, example: input.context, source: input.source, kind: 'capture', score: 4 }]);
   return c.json({ added }, 201);
 });
 
-api.post('/api/candidates/:id/:action{snooze|dismiss}', async c => {
-  const id = idParam(c.req.param('id'));
-  const done = c.req.param('action') === 'snooze' ? await snoozeCandidate(c.env.DB, id) : await setCandidateStatus(c.env.DB, id, 'dismissed');
-  if (!done) throw new ApiError(404, 'Not found', 'Phrase was not found.');
+// Phrases found in the browser by the phrase finder (src/lib/phrase-finder.ts); the book itself is never sent.
+api.post('/api/candidates/batch', async c => {
+  const input = candidateBatchSchema.parse(await c.req.json());
+  const added = await addCandidates(c.env.DB, input.items.map(item => ({ ...item, source: input.source })));
+  return c.json({ added, skipped: input.items.length - added }, 201);
+});
+
+api.post('/api/candidates/:id/snooze', async c => {
+  if (!await snoozeCandidate(c.env.DB, idParam(c.req.param('id')))) throw new ApiError(404, 'Not found', 'Phrase was not found.');
   return c.json({ ok: true });
+});
+
+// "recognize" turns the phrase straight into a card to practice using; "new" queues it for a full analysis on Learn.
+api.post('/api/candidates/:id/decide', async c => {
+  const id = idParam(c.req.param('id'));
+  const { decision } = z.object({ decision: z.enum(['use', 'recognize', 'new', 'not_useful']) }).parse(await c.req.json());
+  const candidate = await getCandidate(c.env.DB, id);
+  if (!candidate) throw new ApiError(404, 'Not found', 'Phrase was not found.');
+  if (!await decideCandidate(c.env.DB, id, decision)) throw new ApiError(409, 'Already decided', 'This phrase was already sorted.');
+  if (decision !== 'recognize') return c.json({ ok: true });
+  const sections: Array<[string, string | null]> = [['Key expression', candidate.phrase], ['Meaning', candidate.meaning], ['Example', candidate.example], ['From', candidate.source]];
+  const card = await insertCard(c.env.DB, {
+    phrase: candidate.example || candidate.phrase, keyExpression: candidate.phrase, grammarPattern: '', goal: 'use',
+    explanation: sections.filter(([, value]) => value).map(([title, value]) => `**${title}**\n${value}`).join('\n\n'),
+    originalInput: candidate.example, context: candidate.source, model: 'phrase-finder', promptVersion: 'none',
+  });
+  return c.json({ ok: true, card }, 201);
 });
 
 // One chunk of a book per request; the browser drives the loop so each request stays small.

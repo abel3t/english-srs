@@ -5,7 +5,7 @@ const navItems = [
   { to: '/review', label: 'Review' },
   { to: '/speak', label: 'Speak' },
   { to: '/learn', label: 'Learn' },
-  { to: '/import', label: 'Import' },
+  { to: '/phrases', label: 'Phrases' },
   { to: '/listen', label: 'Listen' },
   { to: '/cards', label: 'Cards' },
 ] as const;

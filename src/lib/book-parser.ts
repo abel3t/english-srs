@@ -21,6 +21,8 @@ export async function parseBook(file: File): Promise<ParsedBook> {
 // ---------- PDF ----------
 
 async function parsePdf(data: Uint8Array, fallbackTitle: string): Promise<ParsedBook> {
+  // Compile-time guard: keeps pdf.js (~2 MB) out of the Worker bundle; parsing only ever happens in the browser.
+  if (import.meta.env.SSR) throw new Error('PDF parsing runs in the browser only');
   const pdfjs = await import('pdfjs-dist');
   pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
   const doc = await pdfjs.getDocument({ data }).promise;
@@ -117,6 +119,7 @@ function resolvePath(base: string, href: string): string {
 }
 
 async function parseEpub(data: Uint8Array, fallbackTitle: string): Promise<ParsedBook> {
+  if (import.meta.env.SSR) throw new Error('EPUB parsing runs in the browser only');
   const { unzipSync, strFromU8 } = await import('fflate');
   const files = unzipSync(data);
   const read = (path: string) => (files[path] ? strFromU8(files[path]) : null);

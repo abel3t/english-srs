@@ -47,7 +47,8 @@ function shuffle<T>(items: T[]): T[] {
 
 // Two phrases from the cards being learned right now; the key expression is what should come out in speech.
 export async function createQuestion(env: Bindings, topic?: string): Promise<{ question: string; tip: string; phrases: string[] }> {
-  const cards = await getPracticeCards(env.DB, 20);
+  // Cards the learner recognizes but wants to start using come first.
+  const cards = await getPracticeCards(env.DB, 20, { preferUse: true });
   const phrases = [...new Set(shuffle(cards).map(card => card.keyExpression || card.phrase))].filter(phrase => phrase.length <= 80).slice(0, 2);
   const raw = await generateWithOllama(env, getSpeakingQuestionPrompt(phrases, topic));
   try {
