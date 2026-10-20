@@ -13,7 +13,8 @@ A personal English learning system on Cloudflare Workers. It finds phrases worth
    - **Dictation** — hear the sentence (normal or slow), type it, and see missed/wrong words with listening tips (unstressed small words, word endings, contractions).
    - **Type it** — see the meaning and the sentence with a gap, type the missing expression from memory with letter-by-letter feedback.
    Dictation and Type it suggest a rating from your accuracy; each review records its mode and accuracy.
-6. **Listen** to conversations built from the phrases you are learning.
+6. **Speak**: get an interview-style question that invites two of your phrases, record a 60–90 second answer, and get a verbatim transcript (fillers highlighted), the top 3 corrections, phrase usage, pronunciation tips, 1–5 scores, and a native-speaker version you can play sentence by sentence for shadowing. Record again to compare attempts. Silent recordings are rejected before they reach the model.
+7. **Listen** to conversations built from the phrases you are learning.
 
 ## Runtime architecture
 
@@ -28,7 +29,8 @@ Cloudflare D1
 └── Cards, review history, and phrases waiting to be offered (books are never stored)
 
 Cloudflare R2 (english-srs-audio)
-└── One saved audio clip per sentence, so each is synthesized only once
+├── One saved audio clip per sentence, so each is synthesized only once
+└── Your speaking recordings, to compare attempts over time
 ```
 
 There is no Node server, PM2, local SQLite file, Qdrant, or persistent filesystem.
@@ -133,6 +135,7 @@ https://YOUR-WORKER.workers.dev/
 | `/review` | GET | Review due cards |
 | `/learn` | GET | Analyze → edit → save as a card (`?candidate=<id>` pre-fills a suggested phrase) |
 | `/import` | GET | Parse a PDF/EPUB in the browser and extract phrases |
+| `/speak` | GET | Speaking drill: question → record → feedback → shadow → retry |
 | `/listen` | GET | Two-speaker conversation from your cards, with Gemini TTS |
 | `/cards` | GET | Search cards, see their schedule, delete |
 | `/health` | GET | Service health check |
@@ -146,6 +149,9 @@ https://YOUR-WORKER.workers.dev/
 | `/api/candidates/:id/dismiss` | POST | Never offer this phrase again |
 | `/api/import/extract` | POST | Extract phrases from one chunk of book text |
 | `/api/audio?text=` | GET | Saved audio clip for a sentence (made with Gemini on first request) |
+| `/api/speaking/question` | POST | Interview-style question inviting two of your phrases |
+| `/api/speaking/attempts` | POST | Multipart `meta` + `audio` (16 kHz WAV): transcript, feedback, and scores |
+| `/api/speaking/recordings/:session/:attempt` | GET | Your saved recording |
 | `/api/conversations` | POST | Write a conversation from ~10 cards |
 | `/api/conversations/audio` | POST | Proxy a transcript to Gemini multi-speaker TTS |
 | `/api/stats` | GET | Today's added/reviewed/due counts |

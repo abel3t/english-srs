@@ -68,6 +68,12 @@ export function buildAudio(parts: Uint8Array[], mimeType: string): { bytes: Uint
   return { bytes: concatBytes([wavHeader(pcm.length, decoded[0].format), pcm]), contentType: 'audio/wav' };
 }
 
+// Browser recordings: 16-bit mono PCM samples to a WAV file.
+export function encodeWav(samples: Int16Array, sampleRate: number): Uint8Array<ArrayBuffer> {
+  const pcm = new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);
+  return concatBytes([wavHeader(pcm.length, { sampleRate, bitsPerSample: 16, numChannels: 1 }), pcm]);
+}
+
 // Browser: decode the parts and return a playable blob.
 export function geminiAudioToBlob(body: GeminiAudioResponse): Blob {
   const { base64, mimeType } = geminiAudioParts(body);

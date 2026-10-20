@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { getCandidate, getRandomCandidate, listCandidates } from '@/lib/candidates-db';
 import { getOverview, listCards } from '@/lib/cards-db';
+import { listRecentAttempts } from '@/lib/speaking';
 
 export const cardsSearchSchema = z.object({
   q: z.string().trim().max(200).optional().catch(undefined),
@@ -25,3 +26,5 @@ export const getCandidateById = createServerFn()
   .handler(({ data }) => getCandidate(env.DB, data.id));
 
 export const getPendingCandidates = createServerFn().handler(() => listCandidates(env.DB));
+
+export const getRecentSpeaking = createServerFn().handler(() => listRecentAttempts(env.DB, 10));

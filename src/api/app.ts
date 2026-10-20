@@ -9,6 +9,7 @@ import { getClip, normalizeClipText } from '../lib/clips';
 import { createConversation, synthesizeConversation } from '../lib/conversation';
 import { analyzeLearningInput } from '../lib/learning-analysis';
 import { extractPhrases } from '../lib/phrase-extraction';
+import { assessAttempt, createQuestion } from '../lib/speaking';
 import { formatInterval, nextSchedule, ratings } from '../lib/srs';
 import { countWords } from '../lib/text';
 
@@ -131,6 +132,34 @@ api.get('/api/audio', async c => {
   if (!text || text.length > MAX_CLIP_CHARS) throw new ApiError(400, 'Validation error', `Text must be 1–${MAX_CLIP_CHARS} characters.`);
   const clip = await getClip(c.env, text);
   return new Response(clip.body, { headers: { 'Content-Type': clip.contentType, 'Cache-Control': 'private, max-age=31536000, immutable' } });
+});
+
+api.post('/api/speaking/question', async c => {
+  const { topic } = z.object({ topic: z.string().trim().max(300).optional() }).parse(await c.req.json().catch(() => ({})));
+  return c.json(await createQuestion(c.env, topic || undefined));
+});
+
+const attemptMetaSchema = z.object({
+  sessionId: z.string().uuid(), attempt: z.number().int().min(1).max(20),
+  question: z.string().trim().min(1).max(500), phrases: z.array(z.string().trim().min(1).max(120)).max(5).default([]),
+});
+
+// multipart/form-data: "meta" (JSON) and "audio" (16 kHz mono WAV recorded in the browser).
+api.post('/api/speaking/attempts', async c => {
+  const form = await c.req.formData();
+  const meta = attemptMetaSchema.parse(JSON.parse(String(form.get('meta') ?? '{}')));
+  const audio = form.get('audio');
+  if (!(audio instanceof File) || audio.size === 0) throw new ApiError(400, 'Validation error', 'Missing recording.');
+  if (audio.size > 4 * 1024 * 1024) throw new ApiError(400, 'Validation error', 'Recording is too large.');
+  return c.json({ attempt: await assessAttempt(c.env, { ...meta, audio: new Uint8Array(await audio.arrayBuffer()) }) }, 201);
+});
+
+api.get('/api/speaking/recordings/:sessionId/:attempt', async c => {
+  const sessionId = z.string().uuid().parse(c.req.param('sessionId'));
+  const attempt = z.coerce.number().int().min(1).max(20).parse(c.req.param('attempt'));
+  const object = await c.env.AUDIO.get(`recordings/${sessionId}/${attempt}.wav`);
+  if (!object) throw new ApiError(404, 'Not found', 'Recording was not found.');
+  return new Response(object.body, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'private, max-age=31536000, immutable' } });
 });
 
 api.post('/api/conversations', async c => c.json({ conversation: await createConversation(c.env) }));

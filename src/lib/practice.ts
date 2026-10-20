@@ -85,3 +85,16 @@ export function suggestTypingRating(result: { errors: number; gaveUp: boolean; s
   if (result.errors === 0) return result.seconds <= 8 ? 'easy' : 'good';
   return result.errors <= 2 ? 'hard' : 'again';
 }
+
+export const MAX_RECORDING_SECONDS = 90;
+
+// One capture group, so String.split(FILLER) puts the fillers at odd indexes.
+export const FILLER = /\b(uh+|um+|erm+|uhm+|hmm+|ah+|you know|i mean|kind of|sort of)\b/gi;
+
+// Speaking metrics come from the verbatim transcript, so they are consistent between attempts.
+
+export function speakingMetrics(transcript: string, durationSeconds: number): { wordsPerMinute: number; fillers: number; words: number } {
+  const fillers = transcript.match(FILLER)?.length ?? 0;
+  const words = transcript.replace(FILLER, ' ').replace(/\[unclear\]/gi, ' ').split(/\s+/).filter(word => /[\p{L}\p{N}]/u.test(word)).length;
+  return { words, fillers, wordsPerMinute: durationSeconds > 0 ? Math.round(words / (durationSeconds / 60)) : 0 };
+}
