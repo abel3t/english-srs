@@ -2,11 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const clipUrl = (text: string) => `/api/audio?text=${encodeURIComponent(text.replace(/\s+/g, ' ').trim())}`;
 
-// Ask the server to make (and save) the clip ahead of time so pressing Play is instant.
-export function prefetchClip(text: string) {
-  void fetch(clipUrl(text)).catch(() => undefined);
-}
-
 function speakWithBrowser(text: string, rate: number) {
   if (typeof speechSynthesis === 'undefined') return;
   speechSynthesis.cancel();

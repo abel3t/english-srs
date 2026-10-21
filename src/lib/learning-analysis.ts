@@ -11,7 +11,7 @@ const relationshipSchema = z.enum(['exact_duplicate', 'same_meaning', 'shared_pa
 const generatedAnalysisSchema = z.object({
   mainSentence: z.string().min(1), meaning: z.string().min(1), correction: z.string().nullable(),
   keyExpression: z.string(), americanIpa: z.string().nullish().transform(value => value ?? null), grammarPattern: z.string(), realWorldUse: z.string().min(1),
-  toneAndRegister: z.string().min(1), examples: z.array(z.string().min(1)).max(2), avoid: z.string().nullable(),
+  toneAndRegister: z.string().min(1), examples: z.array(z.string().min(1)).max(6), avoid: z.string().nullable(),
   vietnamese: z.string().nullable(), culturalNote: z.string().nullable(), baseScore: z.number().int().min(0).max(10),
   recommendationReason: z.string().min(1), needsMoreContext: z.boolean(), contextQuestion: z.string().nullable(),
   historyRelationships: z.array(z.object({ id: z.number().int().positive(), relationship: relationshipSchema })),
@@ -34,7 +34,6 @@ function buildExplanation(analysis: z.infer<typeof generatedAnalysisSchema>): st
     ['American IPA', analysis.americanIpa],
     ['Pattern', analysis.grammarPattern || null], ['Real-world use', analysis.realWorldUse],
     ['Tone and register', analysis.toneAndRegister],
-    ['Examples', analysis.examples.length ? analysis.examples.map(example => `• ${example}`).join('\n') : null],
     ['Be careful', analysis.avoid], ['Vietnamese', analysis.vietnamese],
     ['Cultural note', analysis.culturalNote], ['Correction', analysis.correction],
   ];
@@ -61,7 +60,7 @@ function resolveRecommendation(analysis: z.infer<typeof generatedAnalysisSchema>
 }
 
 export type Analysis = {
-  mainSentence: string; explanation: string; keyExpression: string; grammarPattern: string;
+  mainSentence: string; meaning: string; explanation: string; keyExpression: string; grammarPattern: string; examples: string[];
   recommendation: Recommendation; score: number; reason: string; relatedCardId: number | null;
   model: string; promptVersion: string;
 };
@@ -75,7 +74,8 @@ export async function analyzeLearningInput(env: Bindings, input: AnalyzeInput): 
   const generated = parseGeneratedJson(await generateWithOllama(env, prompt));
   const resolved = resolveRecommendation(generated, related);
   return {
-    mainSentence: generated.mainSentence.trim(), explanation: buildExplanation(generated),
+    mainSentence: generated.mainSentence.trim(), meaning: generated.meaning.trim(), explanation: buildExplanation(generated),
+    examples: generated.examples.map(example => example.trim()).filter(Boolean).slice(0, 4),
     keyExpression: generated.keyExpression.trim(), grammarPattern: generated.grammarPattern.trim(),
     recommendation: resolved.recommendation, score: resolved.score, reason: resolved.reason, relatedCardId: resolved.relatedCardId,
     model: OLLAMA_MODEL, promptVersion: PROMPT_VERSION,

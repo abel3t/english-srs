@@ -10,27 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as CardsRouteImport } from './routes/cards'
-import { Route as ImportRouteImport } from './routes/import'
 import { Route as LearnRouteImport } from './routes/learn'
-import { Route as ListenRouteImport } from './routes/listen'
-import { Route as PhrasesRouteImport } from './routes/phrases'
-import { Route as ReviewRouteImport } from './routes/review'
-import { Route as SpeakRouteImport } from './routes/speak'
+import { Route as LibraryRouteImport } from './routes/library'
+import { Route as PracticeRouteImport } from './routes/practice'
+import { Route as StoriesRouteImport } from './routes/stories'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CardsRoute = CardsRouteImport.update({
-  id: '/cards',
-  path: '/cards',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ImportRoute = ImportRouteImport.update({
-  id: '/import',
-  path: '/import',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LearnRoute = LearnRouteImport.update({
@@ -38,100 +25,58 @@ const LearnRoute = LearnRouteImport.update({
   path: '/learn',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ListenRoute = ListenRouteImport.update({
-  id: '/listen',
-  path: '/listen',
+const LibraryRoute = LibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PhrasesRoute = PhrasesRouteImport.update({
-  id: '/phrases',
-  path: '/phrases',
+const PracticeRoute = PracticeRouteImport.update({
+  id: '/practice',
+  path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ReviewRoute = ReviewRouteImport.update({
-  id: '/review',
-  path: '/review',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SpeakRoute = SpeakRouteImport.update({
-  id: '/speak',
-  path: '/speak',
+const StoriesRoute = StoriesRouteImport.update({
+  id: '/stories',
+  path: '/stories',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/cards': typeof CardsRoute
-  '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
-  '/listen': typeof ListenRoute
-  '/phrases': typeof PhrasesRoute
-  '/review': typeof ReviewRoute
-  '/speak': typeof SpeakRoute
+  '/library': typeof LibraryRoute
+  '/practice': typeof PracticeRoute
+  '/stories': typeof StoriesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/cards': typeof CardsRoute
-  '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
-  '/listen': typeof ListenRoute
-  '/phrases': typeof PhrasesRoute
-  '/review': typeof ReviewRoute
-  '/speak': typeof SpeakRoute
+  '/library': typeof LibraryRoute
+  '/practice': typeof PracticeRoute
+  '/stories': typeof StoriesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/cards': typeof CardsRoute
-  '/import': typeof ImportRoute
   '/learn': typeof LearnRoute
-  '/listen': typeof ListenRoute
-  '/phrases': typeof PhrasesRoute
-  '/review': typeof ReviewRoute
-  '/speak': typeof SpeakRoute
+  '/library': typeof LibraryRoute
+  '/practice': typeof PracticeRoute
+  '/stories': typeof StoriesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/cards'
-    | '/import'
-    | '/learn'
-    | '/listen'
-    | '/phrases'
-    | '/review'
-    | '/speak'
+  fullPaths: '/' | '/learn' | '/library' | '/practice' | '/stories'
   fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/cards'
-    | '/import'
-    | '/learn'
-    | '/listen'
-    | '/phrases'
-    | '/review'
-    | '/speak'
-  id:
-    | '__root__'
-    | '/'
-    | '/cards'
-    | '/import'
-    | '/learn'
-    | '/listen'
-    | '/phrases'
-    | '/review'
-    | '/speak'
+  to: '/' | '/learn' | '/library' | '/practice' | '/stories'
+  id: '__root__' | '/' | '/learn' | '/library' | '/practice' | '/stories'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CardsRoute: typeof CardsRoute
-  ImportRoute: typeof ImportRoute
   LearnRoute: typeof LearnRoute
-  ListenRoute: typeof ListenRoute
-  PhrasesRoute: typeof PhrasesRoute
-  ReviewRoute: typeof ReviewRoute
-  SpeakRoute: typeof SpeakRoute
+  LibraryRoute: typeof LibraryRoute
+  PracticeRoute: typeof PracticeRoute
+  StoriesRoute: typeof StoriesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -143,20 +88,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/cards': {
-      id: '/cards'
-      path: '/cards'
-      fullPath: '/cards'
-      preLoaderRoute: typeof CardsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/import': {
-      id: '/import'
-      path: '/import'
-      fullPath: '/import'
-      preLoaderRoute: typeof ImportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/learn': {
       id: '/learn'
       path: '/learn'
@@ -164,32 +95,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LearnRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/listen': {
-      id: '/listen'
-      path: '/listen'
-      fullPath: '/listen'
-      preLoaderRoute: typeof ListenRouteImport
+    '/library': {
+      id: '/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/phrases': {
-      id: '/phrases'
-      path: '/phrases'
-      fullPath: '/phrases'
-      preLoaderRoute: typeof PhrasesRouteImport
+    '/practice': {
+      id: '/practice'
+      path: '/practice'
+      fullPath: '/practice'
+      preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/review': {
-      id: '/review'
-      path: '/review'
-      fullPath: '/review'
-      preLoaderRoute: typeof ReviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/speak': {
-      id: '/speak'
-      path: '/speak'
-      fullPath: '/speak'
-      preLoaderRoute: typeof SpeakRouteImport
+    '/stories': {
+      id: '/stories'
+      path: '/stories'
+      fullPath: '/stories'
+      preLoaderRoute: typeof StoriesRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -197,13 +121,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CardsRoute: CardsRoute,
-  ImportRoute: ImportRoute,
   LearnRoute: LearnRoute,
-  ListenRoute: ListenRoute,
-  PhrasesRoute: PhrasesRoute,
-  ReviewRoute: ReviewRoute,
-  SpeakRoute: SpeakRoute,
+  LibraryRoute: LibraryRoute,
+  PracticeRoute: PracticeRoute,
+  StoriesRoute: StoriesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

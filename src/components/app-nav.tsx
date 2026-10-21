@@ -2,12 +2,10 @@ import { Link } from '@tanstack/react-router';
 
 const navItems = [
   { to: '/', label: 'Today' },
-  { to: '/review', label: 'Review' },
-  { to: '/speak', label: 'Speak' },
   { to: '/learn', label: 'Learn' },
-  { to: '/phrases', label: 'Phrases' },
-  { to: '/listen', label: 'Listen' },
-  { to: '/cards', label: 'Cards' },
+  { to: '/practice', label: 'Practice' },
+  { to: '/stories', label: 'Stories' },
+  { to: '/library', label: 'Library' },
 ] as const;
 
 export function AppNav() {

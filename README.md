@@ -1,39 +1,32 @@
 # English SRS
 
-A personal English learning system on Cloudflare Workers. It finds phrases worth learning in the books and PDFs you read, lets you analyze any phrase you meet, and schedules your reviews.
+A personal English learning app on Cloudflare Workers: find phrases in the books and documents you read, learn a few each day, and practise them by typing (Monkeytype-style, reading aloud as you go), with stories and conversations built from what you are still memorizing.
 
 ## Learning workflow
 
-1. **Import** a PDF or EPUB and pick chapters. The browser parses the file and finds phrases without AI (see *Phrase finder* below) — free and instant, even for a whole book. Only the phrases and their example sentences are stored, never the book. *Use AI instead* sends ~1,000-word chunks to Ollama.
-2. **Phrases** (and the prompt on **Today**) asks about the best waiting phrase. Choose *I use it* (known; sometimes checked with a quick fill-in-the-gap), *I recognize it* (becomes a card to practice using; preferred in Speak), *New to me* (opens Learn for a full analysis), *Not useful*, or *later*. Keys 1–4 and L. Your choices estimate what you already use, so likely-known phrases are offered later. Phrases captured with the Chrome extension wait here too.
-3. **Learn** analyzes a phrase (meaning, use, tone, IPA, examples). Analysis is a preview only; nothing is stored until you press **Save card**.
-4. Saved cards live in D1 with their own review schedule (SM-2 style).
-5. **Review** due cards in one of three modes, then rate Again/Hard/Good/Easy (keys 1–4):
-   - **Recall** — fill in the blank in your head, reveal the phrase with audio, read the explanation.
-   - **Dictation** — hear the sentence (normal or slow), type it, and see missed/wrong words with listening tips (unstressed small words, word endings, contractions).
-   - **Type it** — see the meaning and the sentence with a gap, type the missing expression from memory with letter-by-letter feedback.
-   Dictation and Type it suggest a rating from your accuracy; each review records its mode and accuracy.
-6. **Speak**: get an interview-style question that invites two of your phrases, record a 60–90 second answer, and get a verbatim transcript (fillers highlighted), the top 3 corrections, phrase usage, pronunciation tips, 1–5 scores, and a native-speaker version you can play sentence by sentence for shadowing. Record again to compare attempts. Silent recordings are rejected before they reach the model.
-7. **Listen** to conversations built from the phrases you are learning.
+1. **Library → Import** a PDF or EPUB. The browser reads it and the phrase finder (no AI) picks phrases with their original sentence. Only those are stored, never the book.
+2. **Today** suggests 10 phrases. *Learn?* opens Learn; *Skip* drops it.
+3. **Learn**: Ollama (free) previews the meaning, a "worth learning?" score and 3–4 sentences to type → *Skip* or *ask Gemini* → Gemini checks the card (corrects the meaning, improves the sentences, gives its own score) → *Skip* or *Learn it*. Only then is the card stored. You can also paste any phrase here yourself.
+4. **Practice**: type due cards — the phrase, its sentences, or a mix — Monkeytype-style. Turn on **Blanks** to hide the phrase and type it from memory. After each item choose how confident you were (Didn't know / Unsure / Confident / Easy); that drives the review schedule. A card counts as memorized once it is scheduled three weeks or more ahead.
+5. **Stories**: click *Create* to get a short story or a conversation (Ollama) using phrases you are still memorizing — pick some, or let it choose. Listen (Gemini voices, made once and saved), then type it line by line, with or without blanks.
+
+AI is only used when you choose to: previewing/reviewing a phrase you might learn, and creating a story.
 
 ## Runtime architecture
 
 ```text
 Cloudflare Worker (src/server.ts)
-├── /api/*, /health  → Hono JSON API (src/api/app.ts), also used by the Chrome extension
+├── /api/*, /health  → Hono JSON API (src/api/app.ts)
 └── everything else  → TanStack Start (React + shadcn/ui) pages in src/routes
-    ├── Ollama Cloud analysis and conversation writing
-    └── Gemini TTS (sentence clips and two-speaker conversations)
+    ├── Ollama Cloud: card previews, stories and conversations
+    └── Gemini: card review, speech for sentences and stories
 
 Cloudflare D1
-└── Cards, review history, and phrases waiting to be offered (books are never stored)
+└── Cards (with sentences to type) and review history, suggested phrases, stories (books are never stored)
 
 Cloudflare R2 (english-srs-audio)
-├── One saved audio clip per sentence, so each is synthesized only once
-└── Your speaking recordings, to compare attempts over time
+└── Generated speech, made once per sentence or story
 ```
-
-There is no Node server, PM2, local SQLite file, Qdrant, or persistent filesystem.
 
 ## Local development
 
@@ -132,32 +125,25 @@ https://YOUR-WORKER.workers.dev/
 
 | Route | Method | Purpose |
 |---|---:|---|
-| `/` | GET | Today: due count, random "learn this phrase?" prompt, recent cards |
-| `/review` | GET | Review due cards |
-| `/learn` | GET | Analyze → edit → save as a card (`?candidate=<id>` pre-fills a suggested phrase) |
-| `/import` | GET | Parse a PDF/EPUB in the browser and find phrases |
-| `/phrases` | GET | Sort found phrases (use / recognize / new / not useful) and see the knowledge estimate |
-| `/speak` | GET | Speaking drill: question → record → feedback → shadow → retry |
-| `/listen` | GET | Two-speaker conversation from your cards, with Gemini TTS |
-| `/cards` | GET | Search cards, see their schedule, delete |
+| `/` | GET | Today: due count and 10 suggested phrases |
+| `/learn` | GET | Preview (Ollama) → review (Gemini) → save a phrase (`?candidate=<id>` pre-fills a suggestion) |
+| `/practice` | GET | Typing practice for due cards, or a story (`?story=<id>`) |
+| `/stories` | GET | Create, listen to and type stories/conversations |
+| `/library` | GET | Import a book, add a phrase, browse cards |
 | `/health` | GET | Service health check |
-| `/api/analyze` | POST | Analyze text; stores nothing |
-| `/api/cards` | POST | Save a card |
+| `/api/analyze` | POST | Ollama preview of a phrase; stores nothing |
+| `/api/analyze/review` | POST | Gemini review of that preview; stores nothing |
+| `/api/cards` | POST | Save a card with its sentences |
 | `/api/cards/:id` | DELETE | Delete a card and its review history |
-| `/api/review/due` | GET | One random due card with interval previews |
-| `/api/review/answer` | POST | Record Again/Hard/Good/Easy (with review mode and accuracy) and reschedule |
-| `/api/candidates` | POST | Capture a phrase for later (Chrome extension) |
+| `/api/practice/due` | GET | Due cards with their texts to type and next intervals |
+| `/api/practice/answer` | POST | Record the confidence rating after typing |
 | `/api/candidates/batch` | POST | Save phrases found by the in-browser phrase finder |
-| `/api/candidates/:id/decide` | POST | `use` / `recognize` (creates a card) / `new` / `not_useful` |
-| `/api/candidates/:id/snooze` | POST | Ask again in 3 days |
-| `/api/import/extract` | POST | AI extraction from one chunk of book text (optional) |
-| `/api/audio?text=` | GET | Saved audio clip for a sentence (made with Gemini on first request) |
-| `/api/speaking/question` | POST | Interview-style question inviting two of your phrases |
-| `/api/speaking/attempts` | POST | Multipart `meta` + `audio` (16 kHz WAV): transcript, feedback, and scores |
-| `/api/speaking/recordings/:session/:attempt` | GET | Your saved recording |
-| `/api/conversations` | POST | Write a conversation from ~10 cards |
-| `/api/conversations/audio` | POST | Proxy a transcript to Gemini multi-speaker TTS |
-| `/api/stats` | GET | Today's added/reviewed/due counts |
+| `/api/candidates/:id/skip` | POST | Never suggest this phrase again |
+| `/api/audio?text=` | GET | Saved speech for a sentence |
+| `/api/stories` | POST | Create a story or conversation |
+| `/api/stories/:id/audio` | GET | Saved speech for a story |
+| `/api/stories/:id` | DELETE | Delete a story and its audio |
+| `/api/stats` | GET | Today's added/typed/due counts |
 
 ## Phrase finder
 
@@ -188,16 +174,6 @@ Recall on the tuning chapters is optimistic (its gold set was grown from judged 
 - `word-freq.txt` — Zipf frequencies of the top 40,000 English words from [wordfreq](https://github.com/rspeer/wordfreq) (data CC BY-SA 4.0).
 - `reference-ngrams.tsv`, `reference-words.tsv` — `scripts/build-reference-ngrams.py`; aggregate counts only (no text) from 25M words of OpenSubtitles 2018 via [OPUS](https://opus.nlpl.eu/OpenSubtitles.php) (P. Lison and J. Tiedemann, 2016) and 25M words of [WikiText-103](https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/) (CC BY-SA).
 
-## Chrome capture extension
-
-The unpacked Manifest V3 extension in `extension/` captures phrases for later (they appear on **Today**) and offers a compact review of due cards: a fill-in-the-blank prompt, then the full phrase, then the explanation and Again/Hard/Good/Easy with their next intervals.
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select this repository's `extension` directory.
-4. Pin **English SRS Capture** to the toolbar.
-5. Captured phrases are offered on the dashboard; use **Review due** to study due cards.
-
 ## D1 backups
 
 D1 Free includes point-in-time recovery, but periodic exports are still recommended:
@@ -208,4 +184,4 @@ pnpm exec wrangler d1 export english-srs --remote --output english-srs-backup.sq
 
 ## Security
 
-Protect the deployed Worker with Cloudflare Access before using it as a personal application. Otherwise, anyone who discovers the URL could read your cards or consume your Ollama and Gemini quota.
+Protect the deployed Worker with Cloudflare Access before using it as a personal application. Otherwise, anyone who discovers the URL could read your cards or use your Ollama and Gemini quota.

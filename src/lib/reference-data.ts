@@ -36,9 +36,6 @@ export function foldWord(word: string): string {
   return w;
 }
 
-const TOKEN = /[a-z0-9]+(?:'[a-z]+)?/g;
-export const foldPhrase = (text: string) => (text.toLowerCase().match(TOKEN) ?? []).map(foldWord).join(' ');
-
 export function parseReferenceData(phrases: string, words: string): ReferenceData {
   const data: ReferenceData = { phrases: new Map(), words: new Map() };
   for (const line of phrases.split('\n')) {

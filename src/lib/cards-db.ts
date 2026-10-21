@@ -2,11 +2,9 @@ import { nextSchedule, type CardState, type Rating, type ReviewMode } from './sr
 import { ftsQuery, normalizeText, startOfLearningDay } from './text';
 
 
-export type CardGoal = 'understand' | 'use';
-
 export type Card = {
   id: number;
-  goal: CardGoal;
+  examples: string[];
   phrase: string;
   explanation: string;
   keyExpression: string;
@@ -24,7 +22,7 @@ export type Card = {
 };
 
 type CardRow = {
-  id: number; goal: CardGoal; phrase: string; explanation: string; key_expression: string; grammar_pattern: string;
+  id: number; examples: string; phrase: string; explanation: string; key_expression: string; grammar_pattern: string;
   original_input: string | null; context: string | null;
   state: CardState; due_at: string; interval_days: number; ease: number; reps: number; lapses: number;
   last_reviewed_at: string | null;
@@ -33,13 +31,13 @@ type CardRow = {
 
 export type NewCard = {
   phrase: string; explanation: string; keyExpression: string; grammarPattern: string;
-  originalInput: string | null; context: string | null; goal?: CardGoal;
+  originalInput: string | null; context: string | null; examples: string[];
   model: string; promptVersion: string;
 };
 
 function fromRow(row: CardRow): Card {
   return {
-    id: row.id, goal: row.goal, phrase: row.phrase, explanation: row.explanation, keyExpression: row.key_expression,
+    id: row.id, examples: JSON.parse(row.examples || '[]') as string[], phrase: row.phrase, explanation: row.explanation, keyExpression: row.key_expression,
     grammarPattern: row.grammar_pattern, originalInput: row.original_input, context: row.context, state: row.state, dueAt: row.due_at,
     intervalDays: row.interval_days, ease: row.ease, reps: row.reps, lapses: row.lapses,
     lastReviewedAt: row.last_reviewed_at, createdAt: row.created_at,
@@ -50,10 +48,10 @@ export async function insertCard(db: D1Database, card: NewCard): Promise<Card> {
   const now = new Date().toISOString();
   const result = await db.prepare(`
     INSERT INTO cards (phrase, normalized_phrase, explanation, key_expression, grammar_pattern, original_input, context,
-      due_at, model, prompt_version, created_at, updated_at, goal)
+      due_at, model, prompt_version, created_at, updated_at, examples)
     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?8,?8,?11)
   `).bind(card.phrase, normalizeText(card.phrase), card.explanation, card.keyExpression, card.grammarPattern,
-    card.originalInput, card.context, now, card.model, card.promptVersion, card.goal ?? 'understand').run();
+    card.originalInput, card.context, now, card.model, card.promptVersion, JSON.stringify(card.examples)).run();
   const id = Number(result.meta.last_row_id);
   await db.prepare('INSERT INTO cards_fts (card_id, phrase, key_expression, grammar_pattern) VALUES (?1,?2,?3,?4)')
     .bind(id, card.phrase, card.keyExpression, card.grammarPattern).run();
@@ -109,10 +107,12 @@ export async function getDueCards(db: D1Database, limit = 20, now = new Date()):
   return result.results.map(fromRow);
 }
 
-// Cards to practice outside review (e.g. listening): soonest-due first, so struggling phrases come up more.
-export async function getPracticeCards(db: D1Database, limit: number, options: { preferUse?: boolean } = {}): Promise<Card[]> {
-  const order = options.preferUse ? "goal = 'use' DESC, due_at" : 'due_at';
-  const result = await db.prepare(`SELECT * FROM cards ORDER BY ${order} LIMIT ?1`).bind(limit).all<CardRow>();
+// "Memorized" = a review interval of three weeks or more (a mature card in SRS terms).
+export const MEMORIZED_DAYS = 21;
+
+// Cards still being learned, soonest-due first; stories are built from these.
+export async function getUnmemorizedCards(db: D1Database, limit = 60): Promise<Card[]> {
+  const result = await db.prepare('SELECT * FROM cards WHERE interval_days < ?1 ORDER BY due_at LIMIT ?2').bind(MEMORIZED_DAYS, limit).all<CardRow>();
   return result.results.map(fromRow);
 }
 
@@ -149,7 +149,7 @@ export async function getOverview(db: D1Database): Promise<Overview> {
   const row = await db.prepare(`
     SELECT
       (SELECT COUNT(*) FROM cards) AS total,
-      (SELECT COUNT(*) FROM cards WHERE state = 'review' AND interval_days >= 21) AS mature,
+      (SELECT COUNT(*) FROM cards WHERE interval_days >= 21) AS mature,
       (SELECT COUNT(*) FROM candidates WHERE status = 'pending') AS candidates
   `).first<Omit<Overview, keyof DailyStats>>();
   return { ...await getDailyStats(db), total: row?.total ?? 0, mature: row?.mature ?? 0, candidates: row?.candidates ?? 0 };

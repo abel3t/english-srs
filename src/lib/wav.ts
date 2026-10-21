@@ -1,4 +1,4 @@
-// Shared by the browser (Listen) and the Worker (saved clips). Gemini TTS returns base64 audio parts that are
+// Used by the Worker for Gemini speech. Gemini TTS returns base64 audio parts that are
 // either raw PCM ("audio/L16;codec=pcm;rate=24000") or already complete WAV files, depending on the model.
 export type GeminiAudioResponse = {
   candidates?: Array<{ finishReason?: string; content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> } }>;
@@ -68,15 +68,3 @@ export function buildAudio(parts: Uint8Array[], mimeType: string): { bytes: Uint
   return { bytes: concatBytes([wavHeader(pcm.length, decoded[0].format), pcm]), contentType: 'audio/wav' };
 }
 
-// Browser recordings: 16-bit mono PCM samples to a WAV file.
-export function encodeWav(samples: Int16Array, sampleRate: number): Uint8Array<ArrayBuffer> {
-  const pcm = new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength);
-  return concatBytes([wavHeader(pcm.length, { sampleRate, bitsPerSample: 16, numChannels: 1 }), pcm]);
-}
-
-// Browser: decode the parts and return a playable blob.
-export function geminiAudioToBlob(body: GeminiAudioResponse): Blob {
-  const { base64, mimeType } = geminiAudioParts(body);
-  const audio = buildAudio(base64.map(data => Uint8Array.from(atob(data), char => char.charCodeAt(0))), mimeType);
-  return new Blob([audio.bytes], { type: audio.contentType });
-}
