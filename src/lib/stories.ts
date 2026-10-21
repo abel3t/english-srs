@@ -16,6 +16,7 @@ const fromRow = (row: StoryRow): Story => ({
 
 const speakers = CONVERSATION_SPEAKERS.map(speaker => speaker.name) as [string, string];
 const generatedSchema = z.object({
+  format: z.enum(['conversation', 'story']),
   title: z.string().min(1).max(120),
   lines: z.array(z.object({ speaker: z.string().nullish().transform(value => value ?? null), text: z.string().min(1) })).min(3).max(40),
   usedPhrases: z.array(z.string()).default([]),
@@ -30,25 +31,27 @@ function shuffle<T>(items: T[]): T[] {
 }
 
 // Created only when the learner asks. Phrases: the cards they picked, or else a mix of cards still being learned.
-export async function createStory(env: Bindings, input: { kind: StoryKind; cardIds: number[]; topic?: string }): Promise<Story> {
+// The model decides whether a conversation or a story fits the phrases best.
+export async function createStory(env: Bindings, input: { cardIds: number[]; topic?: string }): Promise<Story> {
   const picked = input.cardIds.length
     ? (await Promise.all(input.cardIds.map(id => getCard(env.DB, id)))).filter((card): card is Card => !!card)
     : shuffle(await getUnmemorizedCards(env.DB)).slice(0, 8);
   const phrases = [...new Set(picked.map(phraseOf))];
-  const raw = await generateWithOllama(env, getStoryPrompt(input.kind, phrases, input.topic));
+  const raw = await generateWithOllama(env, getStoryPrompt(phrases, input.topic));
   let story: z.infer<typeof generatedSchema>;
   try { story = generatedSchema.parse(JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''))); }
-  catch (error) { throw new Error(`Ollama returned an invalid ${input.kind}: ${error instanceof Error ? error.message : 'Unknown error'}`); }
+  catch (error) { throw new Error(`Ollama returned an invalid story: ${error instanceof Error ? error.message : 'Unknown error'}`); }
+  const kind: StoryKind = story.format;
 
   const lines: StoryLine[] = story.lines.map(line => ({
     // Conversations must alternate the two known voices; stories have no speakers.
-    speaker: input.kind === 'conversation' ? (speakers.includes(line.speaker ?? '') ? line.speaker : null) : null,
+    speaker: kind === 'conversation' ? (speakers.includes(line.speaker ?? '') ? line.speaker : null) : null,
     text: line.text.trim(),
   }));
-  if (input.kind === 'conversation' && lines.some(line => !line.speaker)) throw new Error('Ollama wrote a conversation with unknown speakers. Please try again.');
+  if (kind === 'conversation' && lines.some(line => !line.speaker)) throw new Error('Ollama wrote a conversation with unknown speakers. Please try again.');
   const used = phrases.filter(phrase => story.usedPhrases.some(usedPhrase => usedPhrase.toLowerCase() === phrase.toLowerCase()));
   const row = await env.DB.prepare('INSERT INTO stories (kind, title, lines, phrases, model, created_at) VALUES (?1,?2,?3,?4,?5,?6) RETURNING *')
-    .bind(input.kind, story.title.trim(), JSON.stringify(lines), JSON.stringify(used.length ? used : phrases), OLLAMA_MODEL, new Date().toISOString())
+    .bind(kind, story.title.trim(), JSON.stringify(lines), JSON.stringify(used.length ? used : phrases), OLLAMA_MODEL, new Date().toISOString())
     .first<StoryRow>();
   if (!row) throw new Error('D1 did not return the new story');
   return fromRow(row);

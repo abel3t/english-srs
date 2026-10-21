@@ -61,7 +61,7 @@ const candidateBatchSchema = z.object({
   })).min(1).max(100),
 });
 const storySchema = z.object({
-  kind: z.enum(['story', 'conversation']), cardIds: z.array(z.number().int().positive()).max(15).default([]),
+  cardIds: z.array(z.number().int().positive()).max(15).default([]),
   topic: z.string().trim().max(300).optional(),
 });
 
