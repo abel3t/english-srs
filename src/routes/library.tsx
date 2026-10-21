@@ -1,9 +1,8 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
-import { BookImport } from '@/components/book-import';
+import { ImportDialog } from '@/components/book-import';
 import { LearnDialog } from '@/components/learn-dialog';
 import { StateBadge } from '@/components/card-badges';
-import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,34 +34,51 @@ function Library() {
   const [filter, setFilter] = useState<string>(search.state ?? 'all');
   const [status, setStatus] = useState<Status>(null);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    navigate({ search: { q: query.trim() || undefined, state: filter === 'all' ? undefined : filter as CardsSearch['state'] } });
-  }
+  const apply = (nextQuery: string, nextFilter: string) =>
+    navigate({ search: { q: nextQuery.trim() || undefined, state: nextFilter === 'all' ? undefined : nextFilter as CardsSearch['state'] }, replace: true });
+  function submit(event: FormEvent) { event.preventDefault(); void apply(query, filter); }
+  const filtered = !!search.q || !!search.state;
 
   return (
     <>
-      <PageHeader title="Library" description="Add material, and browse everything you are learning." />
-      <BookImport pending={pending} />
-      <div className="mt-6 mb-2 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Your cards ({cards.length})</h2>
-        <Button variant="secondary" onClick={() => setAdding(true)}>Add a phrase</Button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+          <p className="text-sm text-muted-foreground">{cards.length} card{cards.length === 1 ? '' : 's'} · {pending} phrase{pending === 1 ? '' : 's'} waiting in suggestions</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)}>Import</Button>
+          <Button onClick={() => setAdding(true)}>Add a phrase</Button>
+        </div>
       </div>
+      <ImportDialog open={importing} onOpenChange={setImporting} />
       <LearnDialog candidate={null} open={adding} onOpenChange={setAdding} />
-      <form onSubmit={submit} className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_200px_auto]">
-        <Input className="col-span-2 h-9 bg-background sm:col-span-1" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search phrase or expression" />
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="h-9 w-full bg-background"><SelectValue /></SelectTrigger>
-          <SelectContent>{filterOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
-        </Select>
-        <Button type="submit" size="lg">Search</Button>
-      </form>
+      {(cards.length > 0 || filtered) && (
+        <form onSubmit={submit} className="grid grid-cols-[1fr_150px] gap-2">
+          <Input className="h-9 bg-background" value={query} onChange={event => setQuery(event.target.value)} onBlur={() => apply(query, filter)} placeholder="Search your cards" />
+          <Select value={filter} onValueChange={value => { setFilter(value); void apply(query, value); }}>
+            <SelectTrigger className="h-9 w-full bg-background"><SelectValue /></SelectTrigger>
+            <SelectContent>{filterOptions.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+          </Select>
+        </form>
+      )}
       <StatusMessage status={status} />
       <div className="mt-3 grid gap-2">
         {cards.length
           ? cards.map(card => <CardItem key={card.id} card={card} onError={text => setStatus({ type: 'error', text })} />)
-          : <Card className="p-4 text-sm text-muted-foreground">No matching cards.</Card>}
+          : filtered
+            ? <Card className="p-4 text-sm text-muted-foreground">No matching cards.</Card>
+            : (
+              <Card className="grid justify-items-center gap-3 p-8 text-center text-sm text-muted-foreground">
+                <p>No cards yet. Import a book to get daily suggestions, or add a phrase you met.</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setImporting(true)}>Import</Button>
+                  <Button onClick={() => setAdding(true)}>Add a phrase</Button>
+                </div>
+              </Card>
+            )}
       </div>
     </>
   );

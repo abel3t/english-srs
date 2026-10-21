@@ -3,15 +3,12 @@ import { Volume2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { z } from 'zod';
 import type { PracticeCard } from '@/api/app';
-import { PageHeader } from '@/components/page-header';
+import { PracticeSetupDialog, type PracticeMode } from '@/components/practice-setup-dialog';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { More } from '@/components/more';
 import { TypingBox, type TypingResult } from '@/components/typing-box';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStoryById } from '@/data/cards';
 import { useClip } from '@/hooks/use-clip';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
@@ -20,49 +17,40 @@ import type { Rating } from '@/lib/srs';
 import type { Story } from '@/lib/stories';
 
 export const Route = createFileRoute('/practice')({
-  validateSearch: z.object({ story: z.number().int().positive().optional().catch(undefined) }),
+  validateSearch: z.object({
+    mode: z.enum(['mixed', 'phrase', 'sentences', 'story']).catch('mixed').default('mixed'),
+    blank: z.boolean().catch(false).default(false),
+    story: z.number().int().positive().optional().catch(undefined),
+  }),
   loaderDeps: ({ search }) => search,
-  loader: ({ deps }) => (deps.story ? getStoryById({ data: { id: deps.story } }) : null),
+  loader: ({ deps }) => (deps.mode === 'story' && deps.story ? getStoryById({ data: { id: deps.story } }) : null),
   head: () => ({ meta: [{ title: 'Practice · English SRS' }] }),
   component: Practice,
 });
 
 type Source = 'mixed' | 'phrase' | 'sentences';
-const SETTINGS_KEY = 'practice-settings';
+const MODE_LABELS: Record<PracticeMode, string> = { mixed: 'Phrases and sentences', phrase: 'Phrases', sentences: 'Sentences', story: 'Story' };
 
-function useSettings() {
-  const [settings, setSettings] = useState<{ blank: boolean; source: Source }>({ blank: false, source: 'mixed' });
-  useEffect(() => {
-    try { const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); if (saved) setSettings(current => ({ ...current, ...saved })); } catch { /* storage unavailable */ }
-  }, []);
-  const update = (change: Partial<typeof settings>) => setSettings(current => {
-    const next = { ...current, ...change };
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
-    return next;
-  });
-  return [settings, update] as const;
-}
-
+// Settings are chosen in the Start practice dialog and carried in the URL; this page only does the typing.
 function Practice() {
   const story = Route.useLoaderData();
-  const [settings, update] = useSettings();
+  const search = Route.useSearch();
+  const [changing, setChanging] = useState(false);
   return (
     <>
-      <PageHeader title="Practice" description="Type it Monkeytype-style and read it aloud as you go. Turn on blanks to fill the phrases from memory." />
-      <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg bg-muted px-3 py-2">
-        <div className="flex items-center gap-2">
-          <Switch id="blanks" checked={settings.blank} onCheckedChange={blank => update({ blank })} />
-          <Label htmlFor="blanks">Blanks (hide the phrases)</Label>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Practice</h1>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>{story ? story.title : MODE_LABELS[search.mode]} · blanks {search.blank ? 'on' : 'off'}</span>
+          <Button variant="outline" size="sm" onClick={() => setChanging(true)}>Change</Button>
         </div>
-        {!story && (
-          <ToggleGroup type="single" variant="outline" size="sm" value={settings.source} onValueChange={value => value && update({ source: value as Source })}>
-            <ToggleGroupItem value="mixed">Mixed</ToggleGroupItem>
-            <ToggleGroupItem value="phrase">Phrases</ToggleGroupItem>
-            <ToggleGroupItem value="sentences">Sentences</ToggleGroupItem>
-          </ToggleGroup>
-        )}
       </div>
-      {story ? <StoryPractice key={story.id} story={story} blank={settings.blank} /> : <CardPractice blank={settings.blank} source={settings.source} />}
+      {story
+        ? <StoryPractice key={`${story.id}-${search.blank}`} story={story} blank={search.blank} />
+        : search.mode === 'story'
+          ? <Card><CardContent className="text-sm text-muted-foreground">That story was not found. <Button variant="link" className="px-1" onClick={() => setChanging(true)}>Pick another</Button></CardContent></Card>
+          : <CardPractice key={`${search.mode}-${search.blank}`} blank={search.blank} source={search.mode as Source} />}
+      <PracticeSetupDialog open={changing} onOpenChange={setChanging} initial={search} />
     </>
   );
 }
@@ -154,7 +142,7 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
     <Card>
       <CardHeader>
         <CardDescription>{remaining} due · {card.keyExpression || 'whole phrase'}</CardDescription>
-        <div className="flex justify-end"><PlayButton text={text} /></div>
+        <CardAction><PlayButton text={text} /></CardAction>
       </CardHeader>
       <CardContent className="grid gap-4">
         <TypingBox text={text} blanks={blanks} onDone={setResult} />

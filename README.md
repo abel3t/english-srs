@@ -4,10 +4,10 @@ A personal English learning app on Cloudflare Workers: find phrases in the books
 
 ## Learning workflow
 
-1. **Library → Import** a PDF or EPUB. The browser reads it and the phrase finder (no AI) picks phrases with their original sentence. Only those are stored, never the book.
+1. **Library → Import** (a dialog) a PDF or EPUB. The browser reads it and the phrase finder (no AI) picks phrases with their original sentence. Only those are stored, never the book.
 2. **Today** suggests at most 10 phrases a day (each one learned or skipped today counts; new ones come tomorrow). *Learn?* opens the Learn dialog; *Skip* drops it.
-3. **Learn** (a dialog, opened from a suggestion or *Add a phrase*): Ollama (free) previews the meaning, a "worth learning?" score and 3–4 sentences to type → *Skip* or *ask Gemini* → Gemini checks the card (corrects the meaning, improves the sentences, gives its own score) → *Skip* or *Learn it*. Only then is the card stored. *Add a phrase* (Today or Library) lets you paste any phrase yourself.
-4. **Practice**: type due cards — the phrase, its sentences, or a mix — Monkeytype-style. Turn on **Blanks** to hide the phrase and type it from memory. After each item choose how confident you were (Didn't know / Unsure / Confident / Easy); that drives the review schedule. A card counts as memorized once it is scheduled three weeks or more ahead.
+3. **Learn** (a dialog, opened from a suggestion on Today or *Add a phrase* in the Library): Ollama (free) previews the meaning, a "worth learning?" score and 3–4 sentences to type → *Skip* or *ask Gemini* → Gemini checks the card (corrects the meaning, improves the sentences, gives its own score) → *Skip* or *Learn it*. Only then is the card stored. *Add a phrase* lets you paste any phrase (2+ words) yourself.
+4. **Practice**: *Start practice* on Today opens a dialog: type the phrases, their sentences, a mix, or a story, Monkeytype-style, with **Blanks** on or off (hides the phrases so you type them from memory). The choice is remembered; *Change* on the Practice page reopens it. After each item choose how confident you were (Didn't know / Unsure / Confident / Easy); that drives the review schedule. A card counts as memorized once it is scheduled three weeks or more ahead.
 5. **Stories**: click *Create* to get a short story or a conversation (Ollama) using phrases you are still memorizing — pick some, or let it choose. Listen (Gemini voices, made once and saved), then type it line by line, with or without blanks.
 
 AI is only used when you choose to: previewing/reviewing a phrase you might learn, and creating a story.
@@ -125,10 +125,10 @@ https://YOUR-WORKER.workers.dev/
 
 | Route | Method | Purpose |
 |---|---:|---|
-| `/` | GET | Today: due count, up to 10 suggestions a day, and the Learn dialog |
-| `/practice` | GET | Typing practice for due cards, or a story (`?story=<id>`) |
+| `/` | GET | Today: progress, Start practice, up to 10 suggestions a day (Learn dialog) |
+| `/practice` | GET | Typing practice; `?mode=mixed\|phrase\|sentences\|story&blank=true&story=<id>` |
 | `/stories` | GET | Create, listen to and type stories/conversations |
-| `/library` | GET | Import a book, add a phrase (Learn dialog), browse cards |
+| `/library` | GET | Import and Add a phrase dialogs, search and browse cards |
 | `/health` | GET | Service health check |
 | `/api/analyze` | POST | Ollama preview of a phrase; stores nothing |
 | `/api/analyze/review` | POST | Gemini review of that preview; stores nothing |
@@ -139,6 +139,7 @@ https://YOUR-WORKER.workers.dev/
 | `/api/candidates/batch` | POST | Save phrases found by the in-browser phrase finder |
 | `/api/candidates/:id/skip` | POST | Never suggest this phrase again |
 | `/api/audio?text=` | GET | Saved speech for a sentence |
+| `/api/stories` | GET | Stories to pick from when starting practice |
 | `/api/stories` | POST | Create a story or conversation |
 | `/api/stories/:id/audio` | GET | Saved speech for a story |
 | `/api/stories/:id` | DELETE | Delete a story and its audio |

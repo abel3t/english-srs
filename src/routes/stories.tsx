@@ -88,7 +88,7 @@ function Stories() {
                 <div className="grid gap-1">{story.lines.map((line, index) => <p key={index}>{line.speaker && <b>{line.speaker}: </b>}{line.text}</p>)}</div>
               </More>
               <div className="flex gap-2">
-                <Button asChild><Link to="/practice" search={{ story: story.id }}>Type it</Link></Button>
+                <Button asChild><Link to="/practice" search={{ mode: 'story', story: story.id, blank: false }}>Type it</Link></Button>
                 <Button variant="ghost" onClick={() => remove(story.id)}>Delete</Button>
               </div>
             </CardContent>

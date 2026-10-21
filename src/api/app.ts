@@ -9,7 +9,7 @@ import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard
 import { getClip, normalizeClipText } from '../lib/clips';
 import { analyzeLearningInput } from '../lib/learning-analysis';
 import { formatInterval, nextSchedule, ratings } from '../lib/srs';
-import { createStory, deleteStory, getStory, getStoryAudio } from '../lib/stories';
+import { createStory, deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
 import { countWords } from '../lib/text';
 
 export const api = new Hono<{ Bindings: Bindings }>();
@@ -142,6 +142,7 @@ api.get('/api/audio', async c => {
   return audioResponse(await getClip(c.env, text));
 });
 
+api.get('/api/stories', async c => c.json({ stories: (await listStories(c.env.DB)).map(({ id, title, kind }) => ({ id, title, kind })) }));
 api.post('/api/stories', async c => c.json({ story: await createStory(c.env, storySchema.parse(await c.req.json())) }, 201));
 
 api.get('/api/stories/:id/audio', async c => {

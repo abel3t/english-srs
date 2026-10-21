@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { kindLabels } from '@/components/book-import';
 import { LearnDialog } from '@/components/learn-dialog';
+import { PracticeSetupDialog } from '@/components/practice-setup-dialog';
 import { getToday } from '@/data/cards';
 import { errorMessage, postJson } from '@/lib/api-client';
 import { DAILY_SUGGESTIONS, type Candidate } from '@/lib/candidates-db';
@@ -25,11 +26,12 @@ function Example({ example, phrase }: { example: string; phrase: string }) {
 
 function Today() {
   const { overview, suggestions, handledToday } = Route.useLoaderData();
-  const [learning, setLearning] = useState<{ candidate: Candidate | null } | null>(null);
+  const [learning, setLearning] = useState<Candidate | null>(null);
+  const [starting, setStarting] = useState(false);
   const metrics = [['Due to type', overview.due], ['Typed today', overview.reviewed], ['Learning', overview.total - overview.mature], ['Memorized', overview.mature]] as const;
   return (
     <>
-      <PageHeader title="Today" description="Type what is due, then pick a few new phrases from your books." />
+      <PageHeader title="Today" description="Practise what is due, then pick a few new phrases from your books." />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {metrics.map(([label, value]) => (
           <Card key={label} size="sm"><CardContent>
@@ -38,11 +40,9 @@ function Today() {
           </CardContent></Card>
         ))}
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="lg" asChild><Link to="/practice">{overview.due ? `Practice ${overview.due} due` : 'Practice'}</Link></Button>
-        <Button size="lg" variant="secondary" onClick={() => setLearning({ candidate: null })}>Add a phrase</Button>
-        <Button size="lg" variant="secondary" asChild><Link to="/stories">Stories</Link></Button>
-      </div>
+      <Button size="lg" className="mt-4 w-full sm:w-auto" onClick={() => setStarting(true)}>
+        {overview.due ? `Start practice · ${overview.due} due` : 'Start practice'}
+      </Button>
 
       <Card className="mt-4">
         <CardHeader>
@@ -53,13 +53,14 @@ function Today() {
         </CardHeader>
         <CardContent className="divide-y">
           {suggestions.length
-            ? suggestions.map(candidate => <Suggestion key={candidate.id} candidate={candidate} onLearn={() => setLearning({ candidate })} />)
+            ? suggestions.map(candidate => <Suggestion key={candidate.id} candidate={candidate} onLearn={() => setLearning(candidate)} />)
             : handledToday >= DAILY_SUGGESTIONS
               ? <p className="text-sm text-muted-foreground">That’s today’s {DAILY_SUGGESTIONS}. 🎉 New suggestions tomorrow; type them in Practice.</p>
               : <p className="text-sm text-muted-foreground"><Link to="/library" className="underline">Import a book or PDF</Link> to get suggestions.</p>}
         </CardContent>
       </Card>
-      <LearnDialog candidate={learning?.candidate ?? null} open={!!learning} onOpenChange={open => { if (!open) setLearning(null); }} />
+      <LearnDialog candidate={learning} open={!!learning} onOpenChange={open => { if (!open) setLearning(null); }} />
+      <PracticeSetupDialog open={starting} onOpenChange={setStarting} />
     </>
   );
 }

@@ -2,8 +2,8 @@ import { Link, useRouter } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { errorMessage, postJson } from '@/lib/api-client';
 import { chunkChapter, parseBook, type ParsedBook } from '@/lib/book-parser';
@@ -35,8 +35,18 @@ function runFinder(chapters: Array<{ title: string; text: string }>, onProgress:
   }));
 }
 
-// Reads a PDF/EPUB on the device and saves only the phrases the finder picks (never the book).
-export function BookImport({ pending }: { pending: number }) {
+// Import dialog: reads a PDF/EPUB on the device and saves only the phrases the finder picks (never the book).
+export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        {open && <BookImport close={() => onOpenChange(false)} />}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BookImport({ close }: { close: () => void }) {
   const router = useRouter();
   const [book, setBook] = useState<ParsedBook | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -86,70 +96,66 @@ export function BookImport({ pending }: { pending: number }) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Import a book or document</CardTitle>
-          <CardDescription>PDF or EPUB, read on your device. Only the phrases found in it are saved, never the book.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          <Input type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" disabled={running} onChange={event => open(event.target.files?.[0])} className="h-10 bg-background" />
-          <p className="text-xs text-muted-foreground">Text-based PDFs only (not scanned images). {pending} phrases are waiting in your suggestions.</p>
-          <StatusMessage status={status} />
-        </CardContent>
-      </Card>
+      <DialogHeader>
+        <DialogTitle>Import a book or document</DialogTitle>
+        <DialogDescription>PDF or EPUB, read on your device. Only the phrases found in it are saved, never the book.</DialogDescription>
+      </DialogHeader>
 
-      {book && (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>{book.title}</CardTitle>
-            <CardDescription>{book.author ? `${book.author} · ` : ''}{book.format.toUpperCase()} · {book.chapters.length} chapters</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            <div className="flex gap-2 text-sm">
-              <Button variant="link" size="sm" className="px-0" disabled={running} onClick={() => setSelected(new Set(book.chapters.map((_, index) => index)))}>Select all</Button>
-              <Button variant="link" size="sm" className="px-0" disabled={running} onClick={() => setSelected(new Set())}>Clear</Button>
-            </div>
-            <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border">
-              {book.chapters.map((chapter, index) => (
-                <li key={index}>
-                  <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
-                    <Checkbox checked={selected.has(index)} disabled={running} onCheckedChange={() => toggle(index)} />
-                    <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
-                    <span className="text-xs text-muted-foreground">{chapter.words.toLocaleString()} words</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            {progress && (
-              <div className="grid gap-1">
-                <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} /></div>
-                <p className="text-xs text-muted-foreground">{progress.label}: {progress.done}/{progress.total}</p>
+      {!summary && (
+        <div className="grid gap-3">
+          <Input type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" disabled={running} onChange={event => open(event.target.files?.[0])} className="h-10 bg-background" />
+          {!book && <p className="text-xs text-muted-foreground">Text-based PDFs only (not scanned images).</p>}
+          {book && (
+            <>
+              <div className="flex items-baseline justify-between gap-2 text-sm">
+                <span className="font-medium">{book.title} <span className="font-normal text-muted-foreground">· {book.chapters.length} chapters</span></span>
+                <span className="flex gap-2">
+                  <Button variant="link" size="sm" className="px-0" disabled={running} onClick={() => setSelected(new Set(book.chapters.map((_, index) => index)))}>All</Button>
+                  <Button variant="link" size="sm" className="px-0" disabled={running} onClick={() => setSelected(new Set())}>None</Button>
+                </span>
               </div>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="lg" disabled={running || !chosen.length} onClick={findFree}>{running ? 'Finding…' : `Find phrases in ${selected.size} chapters`}</Button>
-            </div>
-          </CardContent>
-        </Card>
+              <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">
+                {book.chapters.map((chapter, index) => (
+                  <li key={index}>
+                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
+                      <Checkbox checked={selected.has(index)} disabled={running} onCheckedChange={() => toggle(index)} />
+                      <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
+                      <span className="text-xs text-muted-foreground">{chapter.words.toLocaleString()} words</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {progress && (
+                <div className="grid gap-1">
+                  <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} /></div>
+                  <p className="text-xs text-muted-foreground">{progress.label}: {progress.done}/{progress.total}</p>
+                </div>
+              )}
+              <DialogFooter>
+                <Button disabled={running || !chosen.length} onClick={findFree}>{running ? 'Finding…' : `Find phrases in ${selected.size} chapters`}</Button>
+              </DialogFooter>
+            </>
+          )}
+        </div>
       )}
 
       {summary && (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>Found {summary.found} phrases · {summary.added} new</CardTitle>
-            <CardDescription>
-              {Object.entries(summary.byKind).map(([kind, count]) => `${count} ${kindLabels[kind as keyof typeof kindLabels]}${count === 1 ? '' : 's'}`).join(' · ')}
-              {summary.found > summary.added && ` · ${summary.found - summary.added} you already had`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 text-sm">
-            <ul className="grid gap-1">
-              {summary.top.map(phrase => <li key={phrase.phrase}><b>{phrase.phrase}</b> <span className="text-muted-foreground">· {kindLabels[phrase.kind]} · ×{phrase.count}</span></li>)}
-            </ul>
-            <div><Button size="lg" asChild><Link to="/">See today's suggestions</Link></Button></div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-3 text-sm">
+          <p className="font-medium">Found {summary.found} phrases · {summary.added} new</p>
+          <p className="text-muted-foreground">
+            {Object.entries(summary.byKind).map(([kind, count]) => `${count} ${kindLabels[kind as keyof typeof kindLabels]}${count === 1 ? '' : 's'}`).join(' · ')}
+            {summary.found > summary.added && ` · ${summary.found - summary.added} you already had`}
+          </p>
+          <ul className="grid gap-1">
+            {summary.top.map(phrase => <li key={phrase.phrase}><b>{phrase.phrase}</b> <span className="text-muted-foreground">· {kindLabels[phrase.kind]} · ×{phrase.count}</span></li>)}
+          </ul>
+          <DialogFooter>
+            <Button variant="secondary" onClick={close}>Close</Button>
+            <Button asChild><Link to="/" onClick={close}>See today's suggestions</Link></Button>
+          </DialogFooter>
+        </div>
       )}
+      <StatusMessage status={status} />
     </>
   );
 }
