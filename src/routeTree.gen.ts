@@ -10,7 +10,6 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as LearnRouteImport } from './routes/learn'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as StoriesRouteImport } from './routes/stories'
@@ -18,11 +17,6 @@ import { Route as StoriesRouteImport } from './routes/stories'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LearnRoute = LearnRouteImport.update({
-  id: '/learn',
-  path: '/learn',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LibraryRoute = LibraryRouteImport.update({
@@ -43,14 +37,12 @@ const StoriesRoute = StoriesRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/learn': typeof LearnRoute
   '/library': typeof LibraryRoute
   '/practice': typeof PracticeRoute
   '/stories': typeof StoriesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/learn': typeof LearnRoute
   '/library': typeof LibraryRoute
   '/practice': typeof PracticeRoute
   '/stories': typeof StoriesRoute
@@ -58,22 +50,20 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/learn': typeof LearnRoute
   '/library': typeof LibraryRoute
   '/practice': typeof PracticeRoute
   '/stories': typeof StoriesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/learn' | '/library' | '/practice' | '/stories'
+  fullPaths: '/' | '/library' | '/practice' | '/stories'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/learn' | '/library' | '/practice' | '/stories'
-  id: '__root__' | '/' | '/learn' | '/library' | '/practice' | '/stories'
+  to: '/' | '/library' | '/practice' | '/stories'
+  id: '__root__' | '/' | '/library' | '/practice' | '/stories'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  LearnRoute: typeof LearnRoute
   LibraryRoute: typeof LibraryRoute
   PracticeRoute: typeof PracticeRoute
   StoriesRoute: typeof StoriesRoute
@@ -86,13 +76,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/learn': {
-      id: '/learn'
-      path: '/learn'
-      fullPath: '/learn'
-      preLoaderRoute: typeof LearnRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/library': {
@@ -121,7 +104,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  LearnRoute: LearnRoute,
   LibraryRoute: LibraryRoute,
   PracticeRoute: PracticeRoute,
   StoriesRoute: StoriesRoute,

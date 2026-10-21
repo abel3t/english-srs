@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { errorMessage, postJson } from '@/lib/api-client';
 import { chunkChapter, parseBook, type ParsedBook } from '@/lib/book-parser';
@@ -112,7 +113,7 @@ export function BookImport({ pending }: { pending: number }) {
               {book.chapters.map((chapter, index) => (
                 <li key={index}>
                   <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm">
-                    <input type="checkbox" checked={selected.has(index)} disabled={running} onChange={() => toggle(index)} />
+                    <Checkbox checked={selected.has(index)} disabled={running} onCheckedChange={() => toggle(index)} />
                     <span className="min-w-0 flex-1 truncate">{chapter.title}</span>
                     <span className="text-xs text-muted-foreground">{chapter.words.toLocaleString()} words</span>
                   </label>

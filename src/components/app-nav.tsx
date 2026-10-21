@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router';
 
 const navItems = [
   { to: '/', label: 'Today' },
-  { to: '/learn', label: 'Learn' },
   { to: '/practice', label: 'Practice' },
   { to: '/stories', label: 'Stories' },
   { to: '/library', label: 'Library' },

@@ -1,10 +1,13 @@
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState } from 'react';
+import { More } from '@/components/more';
 import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Toggle } from '@/components/ui/toggle';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { getStoriesPage } from '@/data/cards';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
 import type { StoryKind } from '@/constants';
@@ -48,21 +51,20 @@ function Stories() {
       <Card>
         <CardHeader><CardTitle>Create</CardTitle></CardHeader>
         <CardContent className="grid gap-3 text-sm">
-          <div className="flex gap-1">
-            {(['conversation', 'story'] as const).map(option => (
-              <Button key={option} size="sm" variant={kind === option ? 'default' : 'secondary'} onClick={() => setKind(option)} className="capitalize">{option}</Button>
-            ))}
-          </div>
+          <ToggleGroup type="single" variant="outline" size="sm" value={kind} onValueChange={value => value && setKind(value as StoryKind)} className="justify-start">
+            <ToggleGroupItem value="conversation">Conversation</ToggleGroupItem>
+            <ToggleGroupItem value="story">Story</ToggleGroupItem>
+          </ToggleGroup>
           <Input value={topic} onChange={event => setTopic(event.target.value)} placeholder="Optional topic, e.g. “a code review that went wrong”" className="h-9 bg-background" />
           {learning.length > 0 && (
             <div className="grid gap-1.5">
               <p className="text-muted-foreground">Pick phrases to include, or none and the AI picks from everything you are still learning:</p>
               <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
                 {learning.map(card => (
-                  <button key={card.id} onClick={() => toggle(card.id)}
-                    className={`rounded-full border px-2.5 py-1 text-xs ${picked.has(card.id) ? 'border-primary bg-primary text-primary-foreground' : 'bg-background'}`}>
+                  <Toggle key={card.id} variant="outline" size="sm" pressed={picked.has(card.id)} onPressedChange={() => toggle(card.id)}
+                    className="h-7 rounded-full data-[state=on]:bg-primary data-[state=on]:text-primary-foreground">
                     {card.keyExpression || card.phrase}
-                  </button>
+                  </Toggle>
                 ))}
               </div>
             </div>
@@ -82,9 +84,9 @@ function Stories() {
             </CardHeader>
             <CardContent className="grid gap-3 text-sm">
               <audio controls preload="none" src={`/api/stories/${story.id}/audio`} className="h-9 w-full" />
-              <details><summary className="cursor-pointer text-muted-foreground">Read it</summary>
-                <div className="mt-2 grid gap-1">{story.lines.map((line, index) => <p key={index}>{line.speaker && <b>{line.speaker}: </b>}{line.text}</p>)}</div>
-              </details>
+              <More label="Read it">
+                <div className="grid gap-1">{story.lines.map((line, index) => <p key={index}>{line.speaker && <b>{line.speaker}: </b>}{line.text}</p>)}</div>
+              </More>
               <div className="flex gap-2">
                 <Button asChild><Link to="/practice" search={{ story: story.id }}>Type it</Link></Button>
                 <Button variant="ghost" onClick={() => remove(story.id)}>Delete</Button>

@@ -5,9 +5,13 @@ import { z } from 'zod';
 import type { PracticeCard } from '@/api/app';
 import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
+import { More } from '@/components/more';
 import { TypingBox, type TypingResult } from '@/components/typing-box';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { getStoryById } from '@/data/cards';
 import { useClip } from '@/hooks/use-clip';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
@@ -39,14 +43,6 @@ function useSettings() {
   return [settings, update] as const;
 }
 
-function Toggle({ on, onChange, children }: { on: boolean; onChange: (on: boolean) => void; children: string }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 text-sm">
-      <input type="checkbox" checked={on} onChange={event => onChange(event.target.checked)} className="size-4" /> {children}
-    </label>
-  );
-}
-
 function Practice() {
   const story = Route.useLoaderData();
   const [settings, update] = useSettings();
@@ -54,16 +50,16 @@ function Practice() {
     <>
       <PageHeader title="Practice" description="Type it Monkeytype-style and read it aloud as you go. Turn on blanks to fill the phrases from memory." />
       <div className="mb-3 flex flex-wrap items-center gap-4 rounded-lg bg-muted px-3 py-2">
-        <Toggle on={settings.blank} onChange={blank => update({ blank })}>Blanks (hide the phrases)</Toggle>
+        <div className="flex items-center gap-2">
+          <Switch id="blanks" checked={settings.blank} onCheckedChange={blank => update({ blank })} />
+          <Label htmlFor="blanks">Blanks (hide the phrases)</Label>
+        </div>
         {!story && (
-          <div className="flex gap-1 text-sm">
-            {(['mixed', 'phrase', 'sentences'] as const).map(source => (
-              <button key={source} onClick={() => update({ source })}
-                className={`rounded-md px-2.5 py-1 capitalize ${settings.source === source ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground'}`}>
-                {source === 'phrase' ? 'Phrases' : source === 'sentences' ? 'Sentences' : 'Mixed'}
-              </button>
-            ))}
-          </div>
+          <ToggleGroup type="single" variant="outline" size="sm" value={settings.source} onValueChange={value => value && update({ source: value as Source })}>
+            <ToggleGroupItem value="mixed">Mixed</ToggleGroupItem>
+            <ToggleGroupItem value="phrase">Phrases</ToggleGroupItem>
+            <ToggleGroupItem value="sentences">Sentences</ToggleGroupItem>
+          </ToggleGroup>
         )}
       </div>
       {story ? <StoryPractice key={story.id} story={story} blank={settings.blank} /> : <CardPractice blank={settings.blank} source={settings.source} />}
@@ -165,9 +161,9 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
         {result && (
           <>
             <p className="text-sm text-muted-foreground">{Math.round(result.accuracy * 100)}% accuracy · {result.wpm} words/min · {result.errors} mistakes</p>
-            <details className="text-sm"><summary className="cursor-pointer text-muted-foreground">Meaning and notes</summary>
-              <p className="mt-2 leading-relaxed whitespace-pre-wrap">{card.explanation.replace(/\*\*([^*]+)\*\*/g, '$1')}</p>
-            </details>
+            <More label="Meaning and notes">
+              <p className="leading-relaxed whitespace-pre-wrap">{card.explanation.replace(/\*\*([^*]+)\*\*/g, '$1')}</p>
+            </More>
             <div className="grid gap-1.5">
               <p className="text-sm font-medium">How confident were you?</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

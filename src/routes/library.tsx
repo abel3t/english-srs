@@ -1,11 +1,13 @@
-import { Link, createFileRoute, useRouter } from '@tanstack/react-router';
+import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { BookImport } from '@/components/book-import';
+import { LearnDialog } from '@/components/learn-dialog';
 import { StateBadge } from '@/components/card-badges';
 import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cardsSearchSchema, getLibrary, type CardsSearch } from '@/data/cards';
@@ -32,6 +34,7 @@ function Library() {
   const [query, setQuery] = useState(search.q ?? '');
   const [filter, setFilter] = useState<string>(search.state ?? 'all');
   const [status, setStatus] = useState<Status>(null);
+  const [adding, setAdding] = useState(false);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -44,8 +47,9 @@ function Library() {
       <BookImport pending={pending} />
       <div className="mt-6 mb-2 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Your cards ({cards.length})</h2>
-        <Button variant="secondary" asChild><Link to="/learn">Add a phrase</Link></Button>
+        <Button variant="secondary" onClick={() => setAdding(true)}>Add a phrase</Button>
       </div>
+      <LearnDialog candidate={null} open={adding} onOpenChange={setAdding} />
       <form onSubmit={submit} className="grid grid-cols-2 gap-2 sm:grid-cols-[1fr_200px_auto]">
         <Input className="col-span-2 h-9 bg-background sm:col-span-1" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search phrase or expression" />
         <Select value={filter} onValueChange={setFilter}>
@@ -80,8 +84,8 @@ function CardItem({ card, onError }: { card: SavedCard; onError: (text: string) 
   }
 
   return (
-    <details className="rounded-xl bg-card ring-1 ring-foreground/10">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+    <Collapsible className="rounded-xl bg-card ring-1 ring-foreground/10">
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left">
         <div className="min-w-0">
           <div className="font-medium">{card.phrase}</div>
           <div className="text-sm text-muted-foreground">
@@ -89,8 +93,8 @@ function CardItem({ card, onError }: { card: SavedCard; onError: (text: string) 
           </div>
         </div>
         {card.intervalDays >= MEMORIZED_DAYS ? <span className="text-xs font-medium text-emerald-700">memorized</span> : <StateBadge state={card.state} />}
-      </summary>
-      <div className="grid gap-2 border-t px-4 pt-3 pb-4 text-sm">
+      </CollapsibleTrigger>
+      <CollapsibleContent className="grid gap-2 border-t px-4 pt-3 pb-4 text-sm">
         {card.originalInput && card.originalInput !== card.phrase && <p><b>Original:</b> {card.originalInput}</p>}
         {card.context && <p><b>Context:</b> {card.context}</p>}
         <p className="leading-relaxed whitespace-pre-wrap">{card.explanation.replace(/\*\*([^*]+)\*\*/g, '$1')}</p>
@@ -101,7 +105,7 @@ function CardItem({ card, onError }: { card: SavedCard; onError: (text: string) 
         <div className="mt-1 flex flex-wrap gap-2">
           <Button variant="destructive" className="ml-auto" disabled={busy} onClick={remove}>Delete</Button>
         </div>
-      </div>
-    </details>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

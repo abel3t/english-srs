@@ -1,4 +1,4 @@
-import { normalizeText } from './text';
+import { normalizeText, startOfLearningDay } from './text';
 
 export type CandidateKind = 'frame' | 'phrasal_verb' | 'idiom' | 'prep_phrase' | 'collocation' | 'word' | 'ai' | 'capture';
 export type CandidateStatus = 'pending' | 'learned' | 'dismissed';
@@ -38,10 +38,18 @@ export async function getCandidate(db: D1Database, id: number): Promise<Candidat
   return row ? fromRow(row) : null;
 }
 
-// Today's suggestions: the best-scored phrases not yet learned or skipped.
-export async function getSuggestions(db: D1Database, limit = 10): Promise<Candidate[]> {
-  const result = await db.prepare("SELECT * FROM candidates WHERE status = 'pending' ORDER BY score DESC, id LIMIT ?1").bind(limit).all<CandidateRow>();
-  return result.results.map(fromRow);
+export const DAILY_SUGGESTIONS = 10;
+
+// Today's suggestions: at most 10 a day. Each phrase learned or skipped today uses one, so the list does not
+// refill until tomorrow (the learner's day starts at 00:00 Vietnam time).
+export async function getSuggestions(db: D1Database): Promise<{ suggestions: Candidate[]; handledToday: number }> {
+  const handled = await db.prepare("SELECT COUNT(*) AS n FROM candidates WHERE status IN ('learned', 'dismissed') AND decided_at >= ?1")
+    .bind(startOfLearningDay()).first<{ n: number }>();
+  const handledToday = handled?.n ?? 0;
+  const remaining = Math.max(0, DAILY_SUGGESTIONS - handledToday);
+  if (!remaining) return { suggestions: [], handledToday };
+  const result = await db.prepare("SELECT * FROM candidates WHERE status = 'pending' ORDER BY score DESC, id LIMIT ?1").bind(remaining).all<CandidateRow>();
+  return { suggestions: result.results.map(fromRow), handledToday };
 }
 
 export async function countPending(db: D1Database): Promise<number> {

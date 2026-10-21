@@ -14,7 +14,7 @@ export type CardsSearch = z.infer<typeof cardsSearchSchema>;
 
 export const getToday = createServerFn().handler(async () => ({
   overview: await getOverview(env.DB),
-  suggestions: await getSuggestions(env.DB, 10),
+  ...await getSuggestions(env.DB),
 }));
 
 export const getLibrary = createServerFn()
