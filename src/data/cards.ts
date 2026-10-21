@@ -2,6 +2,7 @@ import { notFound } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
+import { listBooks } from '@/lib/books-db';
 import { countPending, getCandidate, getSuggestions } from '@/lib/candidates-db';
 import { getOverview, getUnmemorizedCards, listCards } from '@/lib/cards-db';
 import { getStory, listStories } from '@/lib/stories';
@@ -22,6 +23,7 @@ export const getLibrary = createServerFn()
   .handler(async ({ data }) => ({
     cards: await listCards(env.DB, { query: data.q, state: data.state, limit: 200 }),
     pending: await countPending(env.DB),
+    books: await listBooks(env.DB),
   }));
 
 export const getCandidateById = createServerFn()

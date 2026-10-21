@@ -17,10 +17,10 @@ const loadData = () => (data ??= Promise.all([
   reference: parseReferenceData(phrases, words),
 })));
 
-self.onmessage = async (event: MessageEvent<{ chapters: Array<{ title: string; text: string }> }>) => {
+self.onmessage = async (event: MessageEvent<{ chapters: Array<{ title: string; text: string }>; limit?: number }>) => {
   try {
     const finderData = await loadData();
-    const results = findPhrases(event.data.chapters, finderData, (done, total) => self.postMessage({ type: 'progress', done, total }));
+    const results = findPhrases(event.data.chapters, finderData, (done, total) => self.postMessage({ type: 'progress', done, total }), event.data.limit);
     self.postMessage({ type: 'done', results });
   } catch (error) {
     self.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'Phrase finder failed' });

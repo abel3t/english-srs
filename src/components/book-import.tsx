@@ -21,7 +21,7 @@ type Summary = { found: number; added: number; byKind: Record<string, number>; t
 // The finder only gets prose: code listings, tables and captions are filtered out by chunkChapter.
 const proseOf = (text: string) => chunkChapter(text, 1_000_000).join('\n\n');
 
-function runFinder(chapters: Array<{ title: string; text: string }>, onProgress: (done: number, total: number) => void): Promise<FoundPhrase[]> {
+function runFinder(chapters: Array<{ title: string; text: string }>, limit: number, onProgress: (done: number, total: number) => void): Promise<FoundPhrase[]> {
   // Compile-time guard so the server bundle does not include the finder and its dictionary code.
   if (import.meta.env.SSR) return Promise.reject(new Error('The phrase finder runs in the browser only'));
   return import('@/lib/phrase-finder.worker?worker').then(({ default: FinderWorker }) => new Promise<FoundPhrase[]>((resolve, reject) => {
@@ -31,7 +31,7 @@ function runFinder(chapters: Array<{ title: string; text: string }>, onProgress:
       else { worker.terminate(); if (event.data.type === 'done') resolve(event.data.results); else reject(new Error(event.data.message)); }
     };
     worker.onerror = event => { worker.terminate(); reject(new Error(event.message || 'Phrase finder failed')); };
-    worker.postMessage({ chapters });
+    worker.postMessage({ chapters, limit });
   }));
 }
 
@@ -78,13 +78,28 @@ function BookImport({ close }: { close: () => void }) {
     if (!book || !chosen.length) return;
     setRunning(true); setStatus(null); setSummary(null);
     try {
-      const found = await runFinder(chosen.map(chapter => ({ title: chapter.title, text: proseOf(chapter.text) })),
-        (done, total) => setProgress({ label: 'Reading chapters', done, total }));
+      // 1. Keep the text as ~1,000-word parts: the cron job lets the AI review them one by one.
+      const parts = chosen.flatMap(chapter => chunkChapter(chapter.text).map(text => ({ chapterTitle: chapter.title, text, words: text.split(/\s+/).filter(Boolean).length })))
+        .map((part, position) => ({ ...part, position }));
+      const { bookId } = await postJson<{ bookId: number }>('/api/books', { title: book.title, author: book.author ?? undefined, format: book.format });
+      for (let start = 0; start < parts.length; start += 20) {
+        setProgress({ label: 'Saving the text', done: start, total: parts.length });
+        await postJson(`/api/books/${bookId}/parts`, { parts: parts.slice(start, start + 20) });
+      }
+      // 2. The code finder proposes candidates (about 20 per part), each tied to the part its example comes from.
+      const found = await runFinder(chosen.map(chapter => ({ title: chapter.title, text: proseOf(chapter.text) })), Math.max(200, parts.length * 20),
+        (done, total) => setProgress({ label: 'Finding phrases', done, total }));
+      const clean = (text: string) => text.toLowerCase().replace(/\s+/g, ' ');
+      const partTexts = parts.map(part => clean(part.text));
+      const partOf = (phrase: FoundPhrase) => {
+        const index = partTexts.findIndex(text => text.includes(clean(phrase.example)));
+        return index >= 0 ? index : undefined;
+      };
       let added = 0;
       for (let start = 0; start < found.length; start += 50) {
         setProgress({ label: 'Saving phrases', done: start, total: found.length });
-        const batch = found.slice(start, start + 50).map(({ phrase, example, kind, band, score }) => ({ phrase, example, kind, band, score }));
-        added += (await postJson<{ added: number }>('/api/candidates/batch', { source: book.title, items: batch })).added;
+        const batch = found.slice(start, start + 50).map(phrase => ({ phrase: phrase.phrase, example: phrase.example, kind: phrase.kind, band: phrase.band, score: phrase.score, part: partOf(phrase) }));
+        added += (await postJson<{ added: number }>('/api/candidates/batch', { source: book.title, bookId, items: batch })).added;
       }
       const byKind: Record<string, number> = {};
       for (const phrase of found) byKind[phrase.kind] = (byKind[phrase.kind] ?? 0) + 1;
@@ -98,7 +113,7 @@ function BookImport({ close }: { close: () => void }) {
     <>
       <DialogHeader>
         <DialogTitle>Import a book or document</DialogTitle>
-        <DialogDescription>PDF or EPUB, read on your device. Only the phrases found in it are saved, never the book.</DialogDescription>
+        <DialogDescription>PDF or EPUB. The text is kept privately so the AI can go through it part by part and pick the best phrases for your daily suggestions.</DialogDescription>
       </DialogHeader>
 
       {!summary && (
@@ -142,6 +157,7 @@ function BookImport({ close }: { close: () => void }) {
       {summary && (
         <div className="grid gap-3 text-sm">
           <p className="font-medium">Found {summary.found} phrases · {summary.added} new</p>
+          <p className="text-muted-foreground">The AI will now go through the book part by part in the background and pick the best ones for your daily suggestions.</p>
           <p className="text-muted-foreground">
             {Object.entries(summary.byKind).map(([kind, count]) => `${count} ${kindLabels[kind as keyof typeof kindLabels]}${count === 1 ? '' : 's'}`).join(' · ')}
             {summary.found > summary.added && ` · ${summary.found - summary.added} you already had`}

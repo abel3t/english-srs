@@ -9,6 +9,7 @@
 // Each candidate is scored by type, frequency, spread across chapters and difficulty band, and gets the
 // most dictionary-like example sentence from the book.
 import nlp from 'compromise';
+import { isBasicPhrase } from './basic-phrases';
 import { foldWord, type ReferenceData } from './reference-data';
 
 export type PhraseKind = 'frame' | 'phrasal_verb' | 'idiom' | 'prep_phrase' | 'collocation' | 'word';
@@ -31,8 +32,6 @@ const DEPENDENT_PREPOSITIONS = new Set(['to', 'of', 'for', 'with', 'by', 'about'
 const COMPLEX_PREP_START = new Set(['in', 'on', 'at', 'for', 'with', 'by', 'under', 'over', 'as', 'from', 'within']);
 const COMPLEX_PREP_END = new Set(['of', 'to', 'for', 'with', 'from']);
 const PURE_PREPOSITIONS = new Set(['to', 'in', 'on', 'at', 'for', 'with', 'from', 'of', 'by', 'into']);
-// Phrases every B1 learner already knows (the dictionary build drops these too, see scripts/build-phrase-data.mjs).
-const BASIC_PHRASES = new Set(`for example|for instance|such as|of course|as well as|as well|a lot of|lot of|lots of|want to|be able to|able to|be able|are able to|is able to|was able to|were able to|unable to|more than|less than|at least|each other|one another|kind of|sort of|part of|its own|their own|his own|her own|our own|your own|my own|how much|how many|too many|too much|think about|worry about|talk about|depend on|know how|wait until|wait for|because of|not yet|one or more|in order to|so that|right now|thank you|you know|i mean|at first|at last|at all|in fact|and so on|look at|look for|find out|go back|come back|a few|a little|no one|next to|instead of|all right`.split('|'));
 const NUMBER_WORDS = new Set('one two three four five six seven eight nine ten hundred hundreds thousand thousands million millions billion billions tens dozen dozens'.split(' '));
 const NOT_A_PHRASE_START = new Set(['more', 'most', 'less', 'least', 'very', 'too', 'so', 'how', 'much', 'many']);
 const KIND_BASE: Record<PhraseKind, number> = { frame: 3, phrasal_verb: 2.2, idiom: 2, prep_phrase: 1.6, collocation: 1.4, word: 1.1 };
@@ -178,7 +177,7 @@ export function findPhrases(chapters: Array<{ title: string; text: string }>, da
           if (end > 0 && (!best || entry.words.length > best.entry.words.length)) best = { entry, end };
         }
         // "in order" followed by "to" is the basic "in order to": not a phrase to offer.
-        if (best && BASIC_PHRASES.has(`${best.entry.text} ${tokens[best.end]?.normal ?? ''}`)) best = null;
+        if (best && isBasicPhrase(`${best.entry.text} ${tokens[best.end]?.normal ?? ''}`)) best = null;
         if (best) {
           for (let k = i; k < best.end; k++) covered.add(k);
           const words = best.entry.words;
@@ -207,7 +206,7 @@ export function findPhrases(chapters: Array<{ title: string; text: string }>, da
             if (tokens[i - 1]?.article || NOT_A_PHRASE_START.has(window[0].normal) || window.some(item => /\d/.test(item.normal) || NUMBER_WORDS.has(item.normal))) continue;
             const surface = window.map(item => item.normal).join(' ');
             // basic phrases, the tail of one ("well as" in "as well as"), and "number of" cut out of "the number of"
-            if (BASIC_PHRASES.has(surface) || (i > 0 && BASIC_PHRASES.has(`${tokens[i - 1].normal} ${surface}`))) continue;
+            if (isBasicPhrase(surface) || (i > 0 && isBasicPhrase(`${tokens[i - 1].normal} ${surface}`))) continue;
             if (n === 2 && last === 'of' && window[0].noun) continue;
             // Purely nominal stretches are usually technical terms ("web server"); keep them only when every word is
             // general vocabulary that is spread across many topics ("side effect").
@@ -331,7 +330,7 @@ export function findPhrases(chapters: Array<{ title: string; text: string }>, da
   const inExpressions = new Set([...tallies.values()].filter(tally => tally.kind !== 'word').flatMap(tally => tally.contentWords));
   const results: FoundPhrase[] = [];
   for (const tally of tallies.values()) {
-    if (tally.contentWords.some(isName)) continue;
+    if (tally.contentWords.some(isName) || isBasicPhrase(tally.phrase)) continue;
     if (tally.kind === 'word') {
       const zipf = zipfOf(tally.phrase);
       // Rarer words count even once; more common ones only when the book repeats them.

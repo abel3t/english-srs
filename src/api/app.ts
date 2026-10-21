@@ -3,6 +3,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
 import { MAX_CLIP_CHARS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
+import { addParts, createBook, deleteBook, partIdsByPosition } from '../lib/books-db';
 import { addCandidates, setCandidateStatus } from '../lib/candidates-db';
 import { reviewCardWithGemini } from '../lib/card-review';
 import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
@@ -52,10 +53,14 @@ const answerSchema = z.object({
   cardId: z.number().int().positive(), rating: z.enum(['again', 'hard', 'good', 'easy']),
   durationMs: z.number().int().min(0).max(3_600_000), accuracy: z.number().min(0).max(1).optional(),
 });
+const bookSchema = z.object({ title: z.string().trim().min(1).max(300), author: z.string().trim().max(300).optional(), format: z.enum(['pdf', 'epub']) });
+const partsSchema = z.object({
+  parts: z.array(z.object({ position: z.number().int().min(0), chapterTitle: z.string().trim().min(1).max(300), text: z.string().trim().min(1).max(20_000), words: z.number().int().min(1) })).min(1).max(20),
+});
 const candidateBatchSchema = z.object({
-  source: z.string().trim().max(200).optional(),
+  source: z.string().trim().max(200).optional(), bookId: z.number().int().positive().optional(),
   items: z.array(z.object({
-    phrase: z.string().trim().min(2).max(120), example: z.string().trim().max(600).optional(),
+    phrase: z.string().trim().min(2).max(120), example: z.string().trim().max(600).optional(), part: z.number().int().min(0).optional(),
     kind: z.enum(['frame', 'phrasal_verb', 'idiom', 'prep_phrase', 'collocation', 'word']),
     band: z.number().int().min(0).max(3), score: z.number().min(-5).max(20),
   })).min(1).max(100),
@@ -123,10 +128,27 @@ api.post('/api/practice/answer', async c => {
   return c.json({ card: updated, stats: await getDailyStats(c.env.DB) });
 });
 
+// A book is stored as ~1,000-word parts so the cron job can let the AI review it part by part.
+api.post('/api/books', async c => {
+  const input = bookSchema.parse(await c.req.json());
+  return c.json({ bookId: await createBook(c.env.DB, { title: input.title, author: input.author || null, format: input.format }) }, 201);
+});
+
+api.post('/api/books/:id/parts', async c => {
+  await addParts(c.env.DB, idParam(c.req.param('id')), partsSchema.parse(await c.req.json()).parts);
+  return c.json({ ok: true });
+});
+
+api.delete('/api/books/:id', async c => {
+  if (!await deleteBook(c.env.DB, idParam(c.req.param('id')))) throw new ApiError(404, 'Not found', 'Book was not found.');
+  return c.json({ deleted: true });
+});
+
 // Phrases found in the browser by the phrase finder (src/lib/phrase-finder.ts); the book itself is never sent.
 api.post('/api/candidates/batch', async c => {
   const input = candidateBatchSchema.parse(await c.req.json());
-  const added = await addCandidates(c.env.DB, input.items.map(item => ({ ...item, source: input.source })));
+  const partIds = input.bookId ? await partIdsByPosition(c.env.DB, input.bookId) : new Map<number, number>();
+  const added = await addCandidates(c.env.DB, input.items.map(({ part, ...item }) => ({ ...item, source: input.source, partId: part === undefined ? null : partIds.get(part) ?? null })));
   return c.json({ added, skipped: input.items.length - added }, 201);
 });
 

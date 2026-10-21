@@ -87,6 +87,7 @@ function Suggestion({ candidate, onLearn }: { candidate: Candidate; onLearn: () 
         </div>
       </div>
       {candidate.example && <p className="text-sm text-muted-foreground"><Example example={candidate.example} phrase={candidate.phrase} /></p>}
+      {candidate.aiReason && <p className="text-xs text-muted-foreground">AI: {candidate.aiReason}</p>}
       <StatusMessage status={status} />
     </div>
   );

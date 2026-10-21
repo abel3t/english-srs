@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cardsSearchSchema, getLibrary, type CardsSearch } from '@/data/cards';
 import { apiRequest, errorMessage } from '@/lib/api-client';
+import type { BookSummary } from '@/lib/books-db';
 import { MEMORIZED_DAYS, type Card as SavedCard } from '@/lib/cards-db';
 import { formatInterval } from '@/lib/srs';
 
@@ -27,7 +28,7 @@ const filterOptions = [
 ] as const;
 
 function Library() {
-  const { cards, pending } = Route.useLoaderData();
+  const { cards, pending, books } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const [query, setQuery] = useState(search.q ?? '');
@@ -54,6 +55,7 @@ function Library() {
         </div>
       </div>
       <ImportDialog open={importing} onOpenChange={setImporting} />
+      {books.length > 0 && <Books books={books} onError={text => setStatus({ type: 'error', text })} />}
       <LearnDialog candidate={null} open={adding} onOpenChange={setAdding} />
       {(cards.length > 0 || filtered) && (
         <form onSubmit={submit} className="grid grid-cols-[1fr_150px] gap-2">
@@ -123,5 +125,35 @@ function CardItem({ card, onError }: { card: SavedCard; onError: (text: string) 
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+// Imported books and how far the AI has got (the cron job reviews a few parts every 15 minutes).
+function Books({ books, onError }: { books: BookSummary[]; onError: (text: string) => void }) {
+  const router = useRouter();
+  async function remove(book: BookSummary) {
+    if (!confirm(`Delete "${book.title}"? Its text and the phrases still waiting are removed; your cards stay.`)) return;
+    try { await apiRequest(`/api/books/${book.id}`, { method: 'DELETE' }); await router.invalidate(); }
+    catch (error) { onError(errorMessage(error)); }
+  }
+  return (
+    <div className="mb-4 grid gap-2">
+      {books.map(book => {
+        const finished = book.done + book.failed >= book.parts;
+        return (
+          <Card key={book.id} className="flex flex-row items-center gap-4 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium">{book.title}</div>
+              <div className="text-xs text-muted-foreground">
+                {finished ? `AI reviewed all ${book.parts} parts` : `AI reviewed ${book.done} of ${book.parts} parts · continuing in the background`}
+                {book.failed > 0 && ` · ${book.failed} could not be reviewed`}
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.round((book.done / Math.max(1, book.parts)) * 100)}%` }} /></div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => remove(book)}>Delete</Button>
+          </Card>
+        );
+      })}
+    </div>
   );
 }

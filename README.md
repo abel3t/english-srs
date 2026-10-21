@@ -4,13 +4,14 @@ A personal English learning app on Cloudflare Workers: find phrases in the books
 
 ## Learning workflow
 
-1. **Library → Import** (a dialog) a PDF or EPUB. The browser reads it and the phrase finder (no AI) picks phrases with their original sentence. Only those are stored, never the book.
-2. **Today** suggests at most 10 phrases a day (each one learned or skipped today counts; new ones come tomorrow). *Learn?* opens the Learn dialog; *Skip* drops it.
+1. **Library → Import** (a dialog) a PDF or EPUB. The browser reads it, splits it into ~1,000-word parts (kept privately in D1), and the phrase finder (code, no AI) proposes candidates, each tied to its part.
+   A **cron job** then lets the AI (Ollama) go through the book part by part: for each part it picks the best phrases (up to 10, best first, with a short reason) and may add up to 3 the code missed. Basic B1 phrases are filtered out in code first. The schedule and parts per run are set in `wrangler.jsonc` (`triggers.crons`, `EXTRACT_PARTS_PER_RUN`) to fit your Ollama quota; runs with nothing left exit immediately. The Library shows each book's progress.
+2. **Today** suggests at most 10 phrases a day — AI picks first, in reading order (each one learned or skipped today counts; new ones come tomorrow). *Learn?* opens the Learn dialog; *Skip* drops it.
 3. **Learn** (a dialog, opened from a suggestion on Today or *Add a phrase* in the Library): Ollama (free) previews the meaning, a "worth learning?" score and 3–4 sentences to type → *Skip* or *ask Gemini* → Gemini checks the card (corrects the meaning, improves the sentences, gives its own score) → *Skip* or *Learn it*. Only then is the card stored. *Add a phrase* lets you paste any phrase (2+ words) yourself.
 4. **Practice**: *Start practice* on Today opens a dialog: type the phrases, their sentences, a mix, or a story, Monkeytype-style, with **Blanks** on or off (hides the phrases so you type them from memory). The choice is remembered; *Change* on the Practice page reopens it. After each item choose how confident you were (Didn't know / Unsure / Confident / Easy); that drives the review schedule. A card counts as memorized once it is scheduled three weeks or more ahead.
 5. **Stories**: *Create* opens a dialog: pick phrases you are still memorizing (or none) and an optional topic; the AI (Ollama) decides whether a conversation or a short story fits them best, in real, natural spoken English (a little more professional for workplace phrases). The button is disabled until you are learning some phrases. Listen (Gemini voices, made once and saved), then type it line by line, with or without blanks.
 
-AI is only used when you choose to: previewing/reviewing a phrase you might learn, and creating a story.
+AI is used in the background to pick phrases from imported books (Ollama, cron), and when you choose to: previewing/reviewing a phrase you might learn, and creating a story.
 
 ## Runtime architecture
 
@@ -22,7 +23,7 @@ Cloudflare Worker (src/server.ts)
     └── Gemini: card review, speech for sentences and stories
 
 Cloudflare D1
-└── Cards (with sentences to type) and review history, suggested phrases, stories (books are never stored)
+└── Cards (with sentences to type) and review history, suggested phrases, stories, imported books as text parts
 
 Cloudflare R2 (english-srs-audio)
 └── Generated speech, made once per sentence or story
@@ -104,6 +105,7 @@ pnpm run deploy
 ```bash
 pnpm build                          # vite build + tsc --noEmit
 pnpm eval:phrases                   # phrase finder recall/precision on eval/phrases
+pnpm cron:local                     # run the book-extraction cron job once against local D1
 pnpm exec wrangler deploy --dry-run # validate the generated Worker config without uploading
 ```
 
@@ -136,7 +138,9 @@ https://YOUR-WORKER.workers.dev/
 | `/api/cards/:id` | DELETE | Delete a card and its review history |
 | `/api/practice/due` | GET | Due cards with their texts to type and next intervals |
 | `/api/practice/answer` | POST | Record the confidence rating after typing |
-| `/api/candidates/batch` | POST | Save phrases found by the in-browser phrase finder |
+| `/api/books` | POST | Create a book (then `/api/books/:id/parts` with its text parts) |
+| `/api/books/:id` | DELETE | Delete a book's text and its waiting phrases (cards stay) |
+| `/api/candidates/batch` | POST | Save phrases found by the in-browser phrase finder, tied to their parts |
 | `/api/candidates/:id/skip` | POST | Never suggest this phrase again |
 | `/api/audio?text=` | GET | Saved speech for a sentence |
 | `/api/stories` | GET | Stories to pick from when starting practice |
