@@ -38,7 +38,7 @@ Cloudflare Worker (src/server.ts)
 Cloudflare D1
 └── Cards (with sentences to type) and review history, suggested phrases, stories, imported reading as text parts
 
-Cloudflare R2 (english-srs-audio)
+Cloudflare R2 (phraseloop-audio)
 └── Generated speech, made once per sentence or story
 ```
 
@@ -75,13 +75,13 @@ pnpm exec wrangler login
 Create D1:
 
 ```bash
-pnpm exec wrangler d1 create english-srs
+pnpm exec wrangler d1 create phraseloop
 ```
 
 Create the R2 bucket for saved audio clips (R2 must be enabled on the account; the free tier includes 10 GB):
 
 ```bash
-pnpm exec wrangler r2 bucket create english-srs-audio
+pnpm exec wrangler r2 bucket create phraseloop-audio
 ```
 
 Copy the D1 `database_id` into `wrangler.jsonc`, replacing:
@@ -185,7 +185,7 @@ https://YOUR-WORKER.workers.dev/
 D1 Free includes point-in-time recovery, but periodic exports are still recommended:
 
 ```bash
-pnpm exec wrangler d1 export english-srs --remote --output english-srs-backup.sql
+pnpm exec wrangler d1 export phraseloop --remote --output phraseloop-backup.sql
 ```
 
 ## Security
