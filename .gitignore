@@ -36,3 +36,6 @@ cards.json
 
 # python
 __pycache__/
+
+# D1 backups
+backup-*.sql
