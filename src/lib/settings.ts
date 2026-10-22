@@ -2,12 +2,12 @@ import type { Bindings } from '../bindings';
 
 // API keys are set on the Settings page (stored in D1) and fall back to the Worker secrets.
 // They are write-only: the website only ever shows whether a key is set and its last 4 characters.
-export const providers = ['ollama', 'elevenlabs'] as const;
+export const providers = ['elevenlabs'] as const;
 export type Provider = (typeof providers)[number];
 export type KeyStatus = { provider: Provider; source: 'settings' | 'secret' | null; last4: string | null; updatedAt: string | null };
 
 const settingKey = (provider: Provider) => `${provider}_api_key`;
-const secretOf = (env: Bindings, provider: Provider) => (provider === 'ollama' ? env.OLLAMA_API_KEY : env.ELEVENLABS_API_KEY) || null;
+const secretOf = (env: Bindings, _provider: Provider) => env.ELEVENLABS_API_KEY || null;
 
 export async function getApiKey(env: Bindings, provider: Provider): Promise<string | null> {
   const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?1').bind(settingKey(provider)).first<{ value: string }>();

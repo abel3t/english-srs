@@ -4,17 +4,17 @@ A personal English learning app on Cloudflare Workers: find phrases in the books
 
 ## Learning workflow
 
-1. **Library → Import** (a dialog) a PDF or EPUB. The browser reads it, splits it into ~1,000-word parts (kept privately in D1), and the phrase finder (code, no AI) proposes candidates, each tied to its part.
-   A **cron job** then lets the AI (Ollama) go through the book part by part: for each part it picks the best phrases (up to 10, best first, with a short reason) and may add up to 3 the code missed. Basic B1 phrases are filtered out in code first. The schedule and parts per run are set in `wrangler.jsonc` (`triggers.crons`, `EXTRACT_PARTS_PER_RUN`) to fit your Ollama quota; runs with nothing left exit immediately. The Library shows each book's progress.
-2. **Today** suggests at most 10 phrases a day — AI picks first, in reading order (each one learned or skipped today counts; new ones come tomorrow). *Learn?* opens the Learn dialog; *Skip* drops it.
-3. **Learn** (a dialog, opened from a suggestion on Today or *Add a phrase* in the Library): Ollama (free) previews the meaning, a "worth learning?" score and 3–4 sentences to type → *Skip* or *Learn it*. Only then is the card stored. *Add a phrase* lets you paste any phrase (2+ words) yourself.
-   With the **connector** (Settings), ask Claude or ChatGPT — on your own subscription — to "prepare today's suggestions in my English app": it writes each card (or skips weak phrases), and those suggestions show *Card ready* and open without a preview.
+Your Claude or ChatGPT subscription is the app's only AI, through a connector (MCP). The website imports books, shows the cards and runs the practice.
+
+1. **Library → Import** (a dialog) a PDF or EPUB. The browser reads it and saves its prose as ~250-word parts (kept privately in D1). The Library shows how far each book has been read.
+2. **Ask Claude or ChatGPT** (connected in Settings):
+   - "Find 10 new phrases in my English app": it gets just enough unread text for that many phrases (about 100 words per phrase, in reading order), picks the phrases most worth learning for a B1 developer, and writes each card (meaning, notes, 3–4 sentences to type). That text is then marked as read.
+   - "Add *circle back* to my English app": it writes a card for a phrase you met.
+   - "Write me a story with my phrases": it picks phrases you are still memorizing and writes a conversation or a short story.
+3. **Today** lists the new cards. *Learn?* opens the card (edit it if you like) → *Learn it* adds it to your practice schedule; *Skip* drops it for good.
 4. **Practice**: *Start practice* on Today opens a dialog: type the phrases, their sentences, a mix, or a story, Monkeytype-style, with **Blanks** on or off (hides the phrases so you type them from memory). The choice is remembered; *Change* on the Practice page reopens it. After each item choose how confident you were (Didn't know / Unsure / Confident / Easy); that drives the review schedule. A card counts as memorized once it is scheduled three weeks or more ahead.
-5. **Stories**: *Create* opens a dialog: pick phrases you are still memorizing (or none) and an optional topic; the AI (Ollama) decides whether a conversation or a short story fits them best, in real, natural spoken English (a little more professional for workplace phrases). The button is disabled until you are learning some phrases. Listen (ElevenLabs voices, or the free Aura-2 voice when there is no key or the month's credits are used up; made once and saved), then type it line by line, with or without blanks.
-
-AI is used in the background to pick phrases from imported books (Ollama, cron), and when you choose to: previewing a phrase you might learn, and creating a story.
-
-6. **Settings**: API keys for Ollama and ElevenLabs (stored in D1, write-only; Worker secrets are the fallback) and the connector link for Claude or ChatGPT.
+5. **Stories**: listen (ElevenLabs voices, or the free Aura-2 voice when there is no key or the month's credits are used up; made once and saved), then type it line by line, with or without blanks.
+6. **Settings**: the connector link for Claude or ChatGPT, and the ElevenLabs API key (stored in D1, write-only; the Worker secret is the fallback).
 
 ## Runtime architecture
 
@@ -23,7 +23,6 @@ Cloudflare Worker (src/server.ts)
 ├── /api/*, /health  → Hono JSON API (src/api/app.ts)
 ├── /mcp/<token>     → MCP connector for Claude or ChatGPT (src/api/mcp.ts)
 └── everything else  → TanStack Start (React + shadcn/ui) pages in src/routes
-    ├── Ollama Cloud: card previews, book picks, stories and conversations
     ├── Workers AI (Deepgram Aura-2): speech for phrases and sentences (free daily allowance)
     └── ElevenLabs (eleven_v3): speech for stories (free plan: ~4 stories a month)
 
@@ -47,10 +46,9 @@ pnpm dev
 
 Vite (with the Cloudflare plugin, so D1 and secrets behave like production) serves the application at `http://localhost:8787`.
 
-Add API keys on the Settings page, or as local secrets in `.dev.vars`:
+Add the ElevenLabs key on the Settings page, or as a local secret in `.dev.vars` (optional):
 
 ```env
-OLLAMA_API_KEY=...
 ELEVENLABS_API_KEY=...
 ```
 
@@ -82,10 +80,9 @@ Copy the D1 `database_id` into `wrangler.jsonc`, replacing:
 REPLACE_WITH_D1_DATABASE_ID
 ```
 
-Add the API keys on the deployed Settings page, or as production secrets:
+Add the ElevenLabs key on the deployed Settings page, or as a production secret (optional):
 
 ```bash
-pnpm exec wrangler secret put OLLAMA_API_KEY
 pnpm exec wrangler secret put ELEVENLABS_API_KEY
 ```
 
@@ -110,7 +107,6 @@ pnpm run deploy
 ```bash
 pnpm build                          # vite build + tsc --noEmit
 pnpm eval:phrases                   # phrase finder recall/precision on eval/phrases
-pnpm cron:local                     # run the book-extraction cron job once against local D1
 pnpm exec wrangler deploy --dry-run # validate the generated Worker config without uploading
 ```
 
@@ -132,35 +128,32 @@ https://YOUR-WORKER.workers.dev/
 
 | Route | Method | Purpose |
 |---|---:|---|
-| `/` | GET | Today: progress, Start practice, up to 10 suggestions a day (Learn dialog) |
+| `/` | GET | Today: progress, Start practice, new cards written by the connector (Learn dialog) |
 | `/practice` | GET | Typing practice; `?mode=mixed\|phrase\|sentences\|story&blank=true&story=<id>` |
 | `/stories` | GET | Create, listen to and type stories/conversations |
 | `/library` | GET | Import and Add a phrase dialogs, search and browse cards |
 | `/settings` | GET | API keys and the Claude/ChatGPT connector link |
 | `/health` | GET | Service health check |
-| `/api/analyze` | POST | Ollama preview of a phrase; stores nothing |
 | `/api/cards` | POST | Save a card with its sentences |
 | `/api/cards/:id` | DELETE | Delete a card and its review history |
 | `/api/practice/due` | GET | Due cards with their texts to type and next intervals |
 | `/api/practice/answer` | POST | Record the confidence rating after typing |
 | `/api/books` | POST | Create a book (then `/api/books/:id/parts` with its text parts) |
 | `/api/books/:id` | DELETE | Delete a book's text and its waiting phrases (cards stay) |
-| `/api/candidates/batch` | POST | Save phrases found by the in-browser phrase finder, tied to their parts |
-| `/api/candidates/:id/skip` | POST | Never suggest this phrase again |
+| `/api/candidates/:id/skip` | POST | Skip a new card (never suggested again) |
 | `/api/audio?text=` | GET | Saved speech for a sentence |
 | `/api/stories` | GET | Stories to pick from when starting practice |
-| `/api/stories` | POST | Create a story or conversation |
 | `/api/stories/:id/audio` | GET | Saved speech for a story |
 | `/api/stories/:id` | DELETE | Delete a story and its audio |
 | `/api/stats` | GET | Today's added/typed/due counts |
 | `/api/settings` | GET | Which API keys are set (last 4 characters only) |
-| `/api/settings/keys/:provider` | PUT, DELETE | Save or remove the `ollama` or `elevenlabs` key |
+| `/api/settings/keys/elevenlabs` | PUT, DELETE | Save or remove the ElevenLabs key |
 | `/api/settings/connector` | POST, DELETE | Create (returned once) or remove the connector link |
-| `/mcp/<token>` | POST | MCP tools: `get_suggestions`, `save_card`, `skip_suggestion`, `list_cards` |
+| `/mcp/<token>` | POST | MCP tools: `get_reading`, `save_cards`, `list_cards`, `save_story` |
 
-## Phrase finder
+## Phrase finder (not used by the app)
 
-`src/lib/phrase-finder.ts` runs in a Web Worker on the Import page. It first finds candidates broadly, then filters and ranks them:
+The app no longer runs it: Claude or ChatGPT reads the text instead. It is kept with its data and evaluation in case code ranking is wanted again (for example to give the connector hints). `src/lib/phrase-finder.ts` ran in a Web Worker on the Import page. It first finds candidates broadly, then filters and ranks them:
 
 1. **Dictionary** — ~16,000 Wiktionary phrasal verbs, idioms and prepositional phrases plus hand-written workplace/interview frames, matched on lemmas ([compromise](https://github.com/spencermountain/compromise)), with slots (“loop *someone* in”) and separable verbs (“figure *it* out”, “take *X* into account”; never two-word verb + preposition like “build … on”).
 2. **Reference phrases** — any 2–4-word stretch that is a strongly associated phrase in 50M words of reference English (fair normalized PMI), so fixed phrases no dictionary lists are found too (“in the context of”, “a large amount of”, “side effect”).

@@ -2,16 +2,14 @@ import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
-import { MAX_CLIP_CHARS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
-import { addParts, createBook, deleteBook, partIdsByPosition } from '../lib/books-db';
-import { addCandidates, setCandidateStatus } from '../lib/candidates-db';
+import { MAX_CLIP_CHARS } from '../constants';
+import { addParts, createBook, deleteBook } from '../lib/books-db';
+import { setCandidateStatus } from '../lib/candidates-db';
 import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
 import { getClip, normalizeClipText } from '../lib/clips';
-import { analyzeLearningInput } from '../lib/learning-analysis';
 import { formatInterval, nextSchedule, ratings } from '../lib/srs';
 import { connectorCreatedAt, createConnectorToken, getKeyStatuses, isConnectorToken, providers, removeConnectorToken, setApiKey } from '../lib/settings';
-import { createStory, deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
-import { countWords } from '../lib/text';
+import { deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
 import { handleMcp } from './mcp';
 
 export const api = new Hono<{ Bindings: Bindings }>();
@@ -34,10 +32,6 @@ const idParam = (value: string) => {
 };
 
 const examplesSchema = z.array(z.string().trim().min(1).max(400)).max(6).default([]);
-const analyzeSchema = z.object({
-  text: z.string().trim().min(1).max(3000), context: z.string().trim().max(1500).optional(),
-  confusingPart: z.string().trim().max(500).optional(), intendedMeaning: z.string().trim().max(1000).optional(),
-});
 const cardSchema = z.object({
   phrase: z.string().trim().min(1).max(1000), explanation: z.string().trim().min(1).max(6000),
   keyExpression: z.string().trim().max(300).default(''), grammarPattern: z.string().trim().max(300).default(''),
@@ -52,19 +46,7 @@ const bookSchema = z.object({ title: z.string().trim().min(1).max(300), author: 
 const partsSchema = z.object({
   parts: z.array(z.object({ position: z.number().int().min(0), chapterTitle: z.string().trim().min(1).max(300), text: z.string().trim().min(1).max(20_000), words: z.number().int().min(1) })).min(1).max(20),
 });
-const candidateBatchSchema = z.object({
-  source: z.string().trim().max(200).optional(), bookId: z.number().int().positive().optional(),
-  items: z.array(z.object({
-    phrase: z.string().trim().min(2).max(120), example: z.string().trim().max(600).optional(), part: z.number().int().min(0).optional(),
-    kind: z.enum(['frame', 'phrasal_verb', 'idiom', 'prep_phrase', 'collocation', 'word']),
-    band: z.number().int().min(0).max(3), score: z.number().min(-5).max(20),
-  })).min(1).max(100),
-});
 const keySchema = z.object({ key: z.string().trim().min(8).max(500) });
-const storySchema = z.object({
-  cardIds: z.array(z.number().int().positive()).max(15).default([]),
-  topic: z.string().trim().max(300).optional(),
-});
 
 // What the Practice page types: the card's front and its example sentences, with the next interval per rating.
 export function toPracticeCard(card: Card) {
@@ -82,20 +64,13 @@ const audioResponse = (audio: { body: ReadableStream | Uint8Array<ArrayBuffer>; 
 api.get('/health', c => c.json({ service: 'English SRS', status: 'running', runtime: 'cloudflare-workers', timestamp: new Date().toISOString() }));
 api.get('/api/stats', async c => c.json(await getDailyStats(c.env.DB)));
 
-// Step 1 of learning: a free Ollama preview (meaning, examples, "worth learning?" score). Nothing is stored.
-api.post('/api/analyze', async c => {
-  const input = analyzeSchema.parse(await c.req.json());
-  if (countWords(input.text) < 2) throw new ApiError(400, 'Validation error', 'Please enter at least 2 words.');
-  return c.json({ analysis: await analyzeLearningInput(c.env, input) });
-});
-
-// Step 2: the learner decided to learn it — store the card in the review schedule.
+// The learner chose "Learn it" for a card written through the connector — store it in the review schedule.
 api.post('/api/cards', async c => {
   const input = cardSchema.parse(await c.req.json());
   const card = await insertCard(c.env.DB, {
     phrase: input.phrase, explanation: input.explanation, keyExpression: input.keyExpression, grammarPattern: input.grammarPattern,
     examples: input.examples, originalInput: input.originalInput || null, context: input.context || null,
-    model: OLLAMA_MODEL, promptVersion: PROMPT_VERSION,
+    model: 'connector', promptVersion: 'connector-v2',
   });
   if (input.candidateId) await setCandidateStatus(c.env.DB, input.candidateId, 'learned');
   return c.json({ card, stats: await getDailyStats(c.env.DB) }, 201);
@@ -121,7 +96,7 @@ api.post('/api/practice/answer', async c => {
   return c.json({ card: updated, stats: await getDailyStats(c.env.DB) });
 });
 
-// A book is stored as ~1,000-word parts so the cron job can let the AI review it part by part.
+// A book is stored as short text parts so Claude or ChatGPT can read just enough of it at a time (connector).
 api.post('/api/books', async c => {
   const input = bookSchema.parse(await c.req.json());
   return c.json({ bookId: await createBook(c.env.DB, { title: input.title, author: input.author || null, format: input.format }) }, 201);
@@ -137,14 +112,6 @@ api.delete('/api/books/:id', async c => {
   return c.json({ deleted: true });
 });
 
-// Phrases found in the browser by the phrase finder (src/lib/phrase-finder.ts); the book itself is never sent.
-api.post('/api/candidates/batch', async c => {
-  const input = candidateBatchSchema.parse(await c.req.json());
-  const partIds = input.bookId ? await partIdsByPosition(c.env.DB, input.bookId) : new Map<number, number>();
-  const added = await addCandidates(c.env.DB, input.items.map(({ part, ...item }) => ({ ...item, source: input.source, partId: part === undefined ? null : partIds.get(part) ?? null })));
-  return c.json({ added, skipped: input.items.length - added }, 201);
-});
-
 api.post('/api/candidates/:id/skip', async c => {
   if (!await setCandidateStatus(c.env.DB, idParam(c.req.param('id')), 'dismissed')) throw new ApiError(404, 'Not found', 'Phrase was not found.');
   return c.json({ ok: true });
@@ -158,7 +125,6 @@ api.get('/api/audio', async c => {
 });
 
 api.get('/api/stories', async c => c.json({ stories: (await listStories(c.env.DB)).map(({ id, title, kind }) => ({ id, title, kind })) }));
-api.post('/api/stories', async c => c.json({ story: await createStory(c.env, storySchema.parse(await c.req.json())) }, 201));
 
 api.get('/api/stories/:id/audio', async c => {
   const story = await getStory(c.env.DB, idParam(c.req.param('id')));

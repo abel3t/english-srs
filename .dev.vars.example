@@ -1,3 +1,2 @@
-# Optional: keys can also be set on the website's Settings page (those are used first).
-OLLAMA_API_KEY=your-ollama-api-key
+# Optional: the key can also be set on the website's Settings page (that one is used first).
 ELEVENLABS_API_KEY=your-elevenlabs-api-key

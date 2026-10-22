@@ -6,13 +6,6 @@
   "compatibility_date": "2026-08-26",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
-  "vars": {
-    "OLLAMA_BASE_URL": "https://ollama.com",
-    // Book parts the AI reviews per cron run. Daily maximum = runs per day x this (with */15: 96 x 2 = 192).
-    "EXTRACT_PARTS_PER_RUN": "2"
-  },
-  // Lets the AI go through imported books part by part; a run with nothing left to do exits immediately.
-  "triggers": { "crons": ["*/15 * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",

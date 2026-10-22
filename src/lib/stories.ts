@@ -1,8 +1,5 @@
-import { z } from 'zod';
 import type { Bindings } from '../bindings';
-import { CLIP_VERSION, CONVERSATION_SPEAKERS, OLLAMA_MODEL, getStoryPrompt, type StoryKind } from '../constants';
-import { getCard, getUnmemorizedCards, type Card } from './cards-db';
-import { generateWithOllama } from './ollama';
+import { CLIP_VERSION, CONVERSATION_SPEAKERS, type StoryKind } from '../constants';
 import { speakStory } from './speech';
 
 export type StoryLine = { speaker: string | null; text: string };
@@ -14,44 +11,13 @@ const fromRow = (row: StoryRow): Story => ({
   hasAudio: !!row.audio_key, createdAt: row.created_at,
 });
 
-const speakers = CONVERSATION_SPEAKERS.map(speaker => speaker.name) as [string, string];
-const generatedSchema = z.object({
-  format: z.enum(['conversation', 'story']),
-  title: z.string().min(1).max(120),
-  lines: z.array(z.object({ speaker: z.string().nullish().transform(value => value ?? null), text: z.string().min(1) })).min(3).max(40),
-  usedPhrases: z.array(z.string()).default([]),
-});
-
-const phraseOf = (card: Card) => card.keyExpression || card.phrase;
-
-function shuffle<T>(items: T[]): T[] {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [copy[i], copy[j]] = [copy[j], copy[i]]; }
-  return copy;
-}
-
-// Created only when the learner asks. Phrases: the cards they picked, or else a mix of cards still being learned.
-// The model decides whether a conversation or a story fits the phrases best.
-export async function createStory(env: Bindings, input: { cardIds: number[]; topic?: string }): Promise<Story> {
-  const picked = input.cardIds.length
-    ? (await Promise.all(input.cardIds.map(id => getCard(env.DB, id)))).filter((card): card is Card => !!card)
-    : shuffle(await getUnmemorizedCards(env.DB)).slice(0, 8);
-  const phrases = [...new Set(picked.map(phraseOf))];
-  const raw = await generateWithOllama(env, getStoryPrompt(phrases, input.topic));
-  let story: z.infer<typeof generatedSchema>;
-  try { story = generatedSchema.parse(JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''))); }
-  catch (error) { throw new Error(`Ollama returned an invalid story: ${error instanceof Error ? error.message : 'Unknown error'}`); }
-  const kind: StoryKind = story.format;
-
-  const lines: StoryLine[] = story.lines.map(line => ({
-    // Conversations must alternate the two known voices; stories have no speakers.
-    speaker: kind === 'conversation' ? (speakers.includes(line.speaker ?? '') ? line.speaker : null) : null,
-    text: line.text.trim(),
-  }));
-  if (kind === 'conversation' && lines.some(line => !line.speaker)) throw new Error('Ollama wrote a conversation with unknown speakers. Please try again.');
-  const used = phrases.filter(phrase => story.usedPhrases.some(usedPhrase => usedPhrase.toLowerCase() === phrase.toLowerCase()));
-  const row = await env.DB.prepare('INSERT INTO stories (kind, title, lines, phrases, model, created_at) VALUES (?1,?2,?3,?4,?5,?6) RETURNING *')
-    .bind(kind, story.title.trim(), JSON.stringify(lines), JSON.stringify(used.length ? used : phrases), OLLAMA_MODEL, new Date().toISOString())
+// Written by Claude or ChatGPT through the connector (save_story); conversations use the two known voices.
+export async function saveStory(db: D1Database, story: { kind: StoryKind; title: string; lines: StoryLine[]; phrases: string[] }): Promise<Story> {
+  const speakers: string[] = CONVERSATION_SPEAKERS.map(speaker => speaker.name);
+  const lines = story.lines.map(line => ({ speaker: story.kind === 'conversation' ? line.speaker : null, text: line.text.trim() }));
+  if (story.kind === 'conversation' && lines.some(line => !speakers.includes(line.speaker ?? ''))) throw new Error(`Every line of a conversation needs a speaker: ${speakers.join(' or ')}.`);
+  const row = await db.prepare('INSERT INTO stories (kind, title, lines, phrases, model, created_at) VALUES (?1,?2,?3,?4,?5,?6) RETURNING *')
+    .bind(story.kind, story.title.trim(), JSON.stringify(lines), JSON.stringify(story.phrases), 'connector', new Date().toISOString())
     .first<StoryRow>();
   if (!row) throw new Error('D1 did not return the new story');
   return fromRow(row);

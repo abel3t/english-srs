@@ -5,12 +5,11 @@ import { StatusMessage, type Status } from '@/components/status-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { kindLabels } from '@/components/book-import';
 import { LearnDialog } from '@/components/learn-dialog';
 import { PracticeSetupDialog } from '@/components/practice-setup-dialog';
 import { getToday } from '@/data/cards';
 import { errorMessage, postJson } from '@/lib/api-client';
-import { DAILY_SUGGESTIONS, type Candidate } from '@/lib/candidates-db';
+import type { Candidate } from '@/lib/candidates-db';
 import { findPhraseSpan } from '@/lib/practice';
 
 export const Route = createFileRoute('/')({
@@ -25,13 +24,13 @@ function Example({ example, phrase }: { example: string; phrase: string }) {
 }
 
 function Today() {
-  const { overview, suggestions, handledToday } = Route.useLoaderData();
+  const { overview, ready } = Route.useLoaderData();
   const [learning, setLearning] = useState<Candidate | null>(null);
   const [starting, setStarting] = useState(false);
   const metrics = [['Due to type', overview.due], ['Typed today', overview.reviewed], ['Learning', overview.total - overview.mature], ['Memorized', overview.mature]] as const;
   return (
     <>
-      <PageHeader title="Today" description="Practise what is due, then pick a few new phrases from your books." />
+      <PageHeader title="Today" description="Practise what is due, then choose which new cards to learn." />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {metrics.map(([label, value]) => (
           <Card key={label} size="sm"><CardContent>
@@ -46,17 +45,15 @@ function Today() {
 
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle>Suggested for today</CardTitle>
+          <CardTitle>New cards</CardTitle>
           <CardDescription>
-            {overview.candidates || handledToday ? `Up to ${DAILY_SUGGESTIONS} a day from your books · ${Math.min(handledToday, DAILY_SUGGESTIONS)} of ${DAILY_SUGGESTIONS} done today` : 'Import a book in the Library to get suggestions.'}
+            Written by Claude or ChatGPT from your books. Ask it: “Find 10 new phrases in my English app”, or “Add <i>circle back</i> to my English app”.
           </CardDescription>
         </CardHeader>
         <CardContent className="divide-y">
-          {suggestions.length
-            ? suggestions.map(candidate => <Suggestion key={candidate.id} candidate={candidate} onLearn={() => setLearning(candidate)} />)
-            : handledToday >= DAILY_SUGGESTIONS
-              ? <p className="text-sm text-muted-foreground">That’s today’s {DAILY_SUGGESTIONS}. 🎉 New suggestions tomorrow; type them in Practice.</p>
-              : <p className="text-sm text-muted-foreground"><Link to="/library" className="underline">Import a book or PDF</Link> to get suggestions.</p>}
+          {ready.length
+            ? ready.map(candidate => <NewCard key={candidate.id} candidate={candidate} onLearn={() => setLearning(candidate)} />)
+            : <p className="text-sm text-muted-foreground">No new cards waiting. <Link to="/library" className="underline">Import a book</Link> and <Link to="/settings" className="underline">connect Claude or ChatGPT</Link> first.</p>}
         </CardContent>
       </Card>
       <LearnDialog candidate={learning} open={!!learning} onOpenChange={open => { if (!open) setLearning(null); }} />
@@ -65,7 +62,7 @@ function Today() {
   );
 }
 
-function Suggestion({ candidate, onLearn }: { candidate: Candidate; onLearn: () => void }) {
+function NewCard({ candidate, onLearn }: { candidate: Candidate; onLearn: () => void }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
@@ -80,15 +77,14 @@ function Suggestion({ candidate, onLearn }: { candidate: Candidate; onLearn: () 
     <div className="grid gap-1.5 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{candidate.phrase}</span>
-        <Badge variant="secondary">{kindLabels[candidate.kind]}</Badge>
-        {candidate.draft && <Badge className="bg-emerald-100 text-emerald-800">Card ready</Badge>}
+        <Badge variant="secondary">{candidate.draft.score}/10</Badge>
         <div className="ml-auto flex gap-1">
           <Button size="sm" onClick={onLearn}>Learn?</Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={skip}>Skip</Button>
         </div>
       </div>
       {candidate.example && <p className="text-sm text-muted-foreground"><Example example={candidate.example} phrase={candidate.phrase} /></p>}
-      {candidate.aiReason && <p className="text-xs text-muted-foreground">AI: {candidate.aiReason}</p>}
+      <p className="text-sm">{candidate.draft.meaning}</p>
       <StatusMessage status={status} />
     </div>
   );

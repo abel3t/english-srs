@@ -10,8 +10,7 @@
     "cf-typegen": "wrangler types --env-file .dev.vars.example",
     "db:migrate:local": "wrangler d1 migrations apply english-srs --local",
     "db:migrate:remote": "wrangler d1 migrations apply english-srs --remote",
-    "eval:phrases": "tsx scripts/eval-phrases.mts",
-    "cron:local": "tsx scripts/run-cron-locally.mts"
+    "eval:phrases": "tsx scripts/eval-phrases.mts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

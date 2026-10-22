@@ -69,7 +69,7 @@ export function PracticeSetupDialog({ open, onOpenChange, initial }: { open: boo
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>{stories.map(item => <SelectItem key={item.id} value={String(item.id)}>{item.title} · {item.kind}</SelectItem>)}</SelectContent>
                 </Select>
-              ) : <p className="text-sm text-muted-foreground">No stories yet. <Link to="/stories" className="underline" onClick={() => onOpenChange(false)}>Create one</Link>.</p>
+              ) : <p className="text-sm text-muted-foreground">No stories yet. Ask Claude or ChatGPT to write one (<Link to="/stories" className="underline" onClick={() => onOpenChange(false)}>Stories</Link>).</p>
           )}
 
           <div className="flex items-center justify-between gap-4">

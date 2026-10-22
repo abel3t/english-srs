@@ -1,7 +1,8 @@
-// Imported books, kept as ~1,000-word parts so the cron job can let the AI review them one part at a time.
+// Imported books, kept as short text parts (~250 words) so Claude or ChatGPT can be given just enough text
+// for the number of phrases the learner asks for, in reading order.
 export type BookFormat = 'pdf' | 'epub';
 export type BookPart = { id: number; bookId: number; position: number; chapterTitle: string; text: string; bookTitle: string };
-export type BookSummary = { id: number; title: string; author: string | null; parts: number; done: number; failed: number; createdAt: string };
+export type BookSummary = { id: number; title: string; author: string | null; parts: number; read: number; createdAt: string };
 
 export async function createBook(db: D1Database, book: { title: string; author: string | null; format: BookFormat }): Promise<number> {
   const row = await db.prepare('INSERT INTO books (title, author, format, created_at) VALUES (?1,?2,?3,?4) RETURNING id')
@@ -16,39 +17,42 @@ export async function addParts(db: D1Database, bookId: number, parts: Array<{ po
   await db.batch(parts.map(part => insert.bind(bookId, part.position, part.chapterTitle, part.text, part.words)));
 }
 
-export async function partIdsByPosition(db: D1Database, bookId: number): Promise<Map<number, number>> {
-  const rows = await db.prepare('SELECT id, position FROM book_parts WHERE book_id = ?1').bind(bookId).all<{ id: number; position: number }>();
-  return new Map(rows.results.map(row => [row.position, row.id]));
-}
+// About one phrase worth learning per 100 words of prose, so asking for 10 phrases gives about 1,000 words.
+export const WORDS_PER_PHRASE = 100;
 
-// Oldest book first, in reading order; parts that failed three times are left alone.
-export async function nextPendingParts(db: D1Database, limit: number): Promise<BookPart[]> {
+// The next unread parts (oldest book first, in reading order), just enough for the phrases asked for.
+export async function nextReading(db: D1Database, phrases: number): Promise<BookPart[]> {
   const rows = await db.prepare(`
-    SELECT p.id, p.book_id, p.position, p.chapter_title, p.text, b.title AS book_title FROM book_parts p JOIN books b ON b.id = p.book_id
-    WHERE p.status = 'pending' AND p.attempts < 3 ORDER BY b.created_at, p.position LIMIT ?1
-  `).bind(limit).all<{ id: number; book_id: number; position: number; chapter_title: string; text: string; book_title: string }>();
-  return rows.results.map(row => ({ id: row.id, bookId: row.book_id, position: row.position, chapterTitle: row.chapter_title, text: row.text, bookTitle: row.book_title }));
+    SELECT p.id, p.book_id, p.position, p.chapter_title, p.text, p.words, b.title AS book_title FROM book_parts p JOIN books b ON b.id = p.book_id
+    WHERE p.status = 'pending' ORDER BY b.created_at, b.id, p.position LIMIT 60
+  `).all<{ id: number; book_id: number; position: number; chapter_title: string; text: string; words: number; book_title: string }>();
+  const parts: BookPart[] = [];
+  let words = 0;
+  for (const row of rows.results) {
+    if (words >= phrases * WORDS_PER_PHRASE || (parts.length && row.book_id !== parts[0].bookId)) break;
+    parts.push({ id: row.id, bookId: row.book_id, position: row.position, chapterTitle: row.chapter_title, text: row.text, bookTitle: row.book_title });
+    words += row.words;
+  }
+  return parts;
 }
 
-export async function markPartDone(db: D1Database, id: number): Promise<void> {
-  await db.prepare("UPDATE book_parts SET status = 'done', error = NULL, processed_at = ?1 WHERE id = ?2").bind(new Date().toISOString(), id).run();
-}
-
-export async function markPartFailed(db: D1Database, id: number, error: string): Promise<void> {
-  await db.prepare("UPDATE book_parts SET attempts = attempts + 1, error = ?1, status = CASE WHEN attempts + 1 >= 3 THEN 'failed' ELSE 'pending' END WHERE id = ?2")
-    .bind(error.slice(0, 500), id).run();
+export async function markPartsRead(db: D1Database, ids: number[]): Promise<void> {
+  if (!ids.length) return;
+  const update = db.prepare("UPDATE book_parts SET status = 'done', processed_at = ?1 WHERE id = ?2");
+  const now = new Date().toISOString();
+  await db.batch(ids.map(id => update.bind(now, id)));
 }
 
 export async function listBooks(db: D1Database): Promise<BookSummary[]> {
   const rows = await db.prepare(`
     SELECT b.id, b.title, b.author, b.created_at, COUNT(p.id) AS parts,
-      SUM(p.status = 'done') AS done, SUM(p.status = 'failed') AS failed
+      SUM(p.status = 'done') AS read
     FROM books b LEFT JOIN book_parts p ON p.book_id = b.id GROUP BY b.id ORDER BY b.created_at DESC
-  `).all<{ id: number; title: string; author: string | null; created_at: string; parts: number; done: number | null; failed: number | null }>();
-  return rows.results.map(row => ({ id: row.id, title: row.title, author: row.author, parts: row.parts, done: row.done ?? 0, failed: row.failed ?? 0, createdAt: row.created_at }));
+  `).all<{ id: number; title: string; author: string | null; created_at: string; parts: number; read: number | null }>();
+  return rows.results.map(row => ({ id: row.id, title: row.title, author: row.author, parts: row.parts, read: row.read ?? 0, createdAt: row.created_at }));
 }
 
-// Removes the text and the phrases still waiting to be suggested; learned cards stay.
+// Removes the text and its cards still waiting in Today; learned cards stay.
 export async function deleteBook(db: D1Database, id: number): Promise<boolean> {
   await db.prepare("DELETE FROM candidates WHERE status = 'pending' AND part_id IN (SELECT id FROM book_parts WHERE book_id = ?1)").bind(id).run();
   const result = await db.prepare('DELETE FROM books WHERE id = ?1').bind(id).run();

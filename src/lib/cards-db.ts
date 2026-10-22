@@ -1,5 +1,5 @@
 import { nextSchedule, type CardState, type Rating, type ReviewMode } from './srs';
-import { ftsQuery, normalizeText, startOfLearningDay } from './text';
+import { normalizeText, startOfLearningDay } from './text';
 
 
 export type Card = {
@@ -71,22 +71,6 @@ export async function deleteCard(db: D1Database, id: number): Promise<boolean> {
   return (result.meta.changes ?? 0) > 0;
 }
 
-// Exact phrase matches first, then full-text matches, so the analyzer can flag duplicates and related cards.
-export async function findRelatedCards(db: D1Database, input: string, limit = 3): Promise<Card[]> {
-  const normalized = normalizeText(input);
-  const exact = await db.prepare('SELECT * FROM cards WHERE normalized_phrase = ?1 ORDER BY created_at DESC LIMIT ?2')
-    .bind(normalized, limit).all<CardRow>();
-  const cards = exact.results.map(fromRow);
-  const match = ftsQuery(input);
-  if (cards.length >= limit || !match) return cards;
-  const related = await db.prepare(`
-    SELECT c.* FROM cards_fts f JOIN cards c ON c.id = f.card_id
-    WHERE cards_fts MATCH ?1 AND c.normalized_phrase != ?2
-    ORDER BY bm25(cards_fts), c.created_at DESC LIMIT ?3
-  `).bind(match, normalized, limit - cards.length).all<CardRow>();
-  return [...cards, ...related.results.map(fromRow)];
-}
-
 export async function listCards(db: D1Database, options: { query?: string; state?: CardState; limit?: number } = {}): Promise<Card[]> {
   const conditions: string[] = [];
   const values: unknown[] = [];
@@ -150,7 +134,7 @@ export async function getOverview(db: D1Database): Promise<Overview> {
     SELECT
       (SELECT COUNT(*) FROM cards) AS total,
       (SELECT COUNT(*) FROM cards WHERE interval_days >= 21) AS mature,
-      (SELECT COUNT(*) FROM candidates WHERE status = 'pending') AS candidates
+      (SELECT COUNT(*) FROM candidates WHERE status = 'pending' AND draft IS NOT NULL) AS candidates
   `).first<Omit<Overview, keyof DailyStats>>();
   return { ...await getDailyStats(db), total: row?.total ?? 0, mature: row?.mature ?? 0, candidates: row?.candidates ?? 0 };
 }

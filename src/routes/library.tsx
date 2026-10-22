@@ -1,7 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
 import { ImportDialog } from '@/components/book-import';
-import { LearnDialog } from '@/components/learn-dialog';
 import { StateBadge } from '@/components/card-badges';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
@@ -34,7 +33,6 @@ function Library() {
   const [query, setQuery] = useState(search.q ?? '');
   const [filter, setFilter] = useState<string>(search.state ?? 'all');
   const [status, setStatus] = useState<Status>(null);
-  const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const apply = (nextQuery: string, nextFilter: string) =>
@@ -47,16 +45,12 @@ function Library() {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-          <p className="text-sm text-muted-foreground">{cards.length} card{cards.length === 1 ? '' : 's'} · {pending} phrase{pending === 1 ? '' : 's'} waiting in suggestions</p>
+          <p className="text-sm text-muted-foreground">{cards.length} card{cards.length === 1 ? '' : 's'} · {pending} new card{pending === 1 ? '' : 's'} waiting on Today</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImporting(true)}>Import</Button>
-          <Button onClick={() => setAdding(true)}>Add a phrase</Button>
-        </div>
+        <Button onClick={() => setImporting(true)}>Import</Button>
       </div>
       <ImportDialog open={importing} onOpenChange={setImporting} />
       {books.length > 0 && <Books books={books} onError={text => setStatus({ type: 'error', text })} />}
-      <LearnDialog candidate={null} open={adding} onOpenChange={setAdding} />
       {(cards.length > 0 || filtered) && (
         <form onSubmit={submit} className="grid grid-cols-[1fr_150px] gap-2">
           <Input className="h-9 bg-background" value={query} onChange={event => setQuery(event.target.value)} onBlur={() => apply(query, filter)} placeholder="Search your cards" />
@@ -74,11 +68,8 @@ function Library() {
             ? <Card className="p-4 text-sm text-muted-foreground">No matching cards.</Card>
             : (
               <Card className="grid justify-items-center gap-3 p-8 text-center text-sm text-muted-foreground">
-                <p>No cards yet. Import a book to get daily suggestions, or add a phrase you met.</p>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setImporting(true)}>Import</Button>
-                  <Button onClick={() => setAdding(true)}>Add a phrase</Button>
-                </div>
+                <p>No cards yet. Import a book, then ask Claude or ChatGPT to find new phrases in it.</p>
+                <Button onClick={() => setImporting(true)}>Import</Button>
               </Card>
             )}
       </div>
@@ -128,27 +119,25 @@ function CardItem({ card, onError }: { card: SavedCard; onError: (text: string) 
   );
 }
 
-// Imported books and how far the AI has got (the cron job reviews a few parts every 15 minutes).
+// Imported books and how far Claude or ChatGPT has read (it reads on when asked for new phrases).
 function Books({ books, onError }: { books: BookSummary[]; onError: (text: string) => void }) {
   const router = useRouter();
   async function remove(book: BookSummary) {
-    if (!confirm(`Delete "${book.title}"? Its text and the phrases still waiting are removed; your cards stay.`)) return;
+    if (!confirm(`Delete "${book.title}"? Its text and its new cards still waiting are removed; your learned cards stay.`)) return;
     try { await apiRequest(`/api/books/${book.id}`, { method: 'DELETE' }); await router.invalidate(); }
     catch (error) { onError(errorMessage(error)); }
   }
   return (
     <div className="mb-4 grid gap-2">
       {books.map(book => {
-        const finished = book.done + book.failed >= book.parts;
         return (
           <Card key={book.id} className="flex flex-row items-center gap-4 px-4 py-3">
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">{book.title}</div>
               <div className="text-xs text-muted-foreground">
-                {finished ? `AI reviewed all ${book.parts} parts` : `AI reviewed ${book.done} of ${book.parts} parts · continuing in the background`}
-                {book.failed > 0 && ` · ${book.failed} could not be reviewed`}
+                {book.read >= book.parts ? 'Read to the end' : `${Math.round((book.read / Math.max(1, book.parts)) * 100)}% read`}
               </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.round((book.done / Math.max(1, book.parts)) * 100)}%` }} /></div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${Math.round((book.read / Math.max(1, book.parts)) * 100)}%` }} /></div>
             </div>
             <Button variant="ghost" size="sm" onClick={() => remove(book)}>Delete</Button>
           </Card>

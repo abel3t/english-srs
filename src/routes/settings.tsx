@@ -18,7 +18,6 @@ export const Route = createFileRoute('/settings')({
 });
 
 const providerInfo: Record<Provider, { name: string; use: string; url: string }> = {
-  ollama: { name: 'Ollama', use: 'Previews phrases, picks phrases from your books, writes stories.', url: 'https://ollama.com/settings/keys' },
   elevenlabs: { name: 'ElevenLabs', use: 'Story audio. Without a key (or when the month’s credits run out), stories use the free Aura-2 voice.', url: 'https://elevenlabs.io/app/settings/api-keys' },
 };
 
@@ -26,11 +25,11 @@ function Settings() {
   const { keys, connectorCreatedAt } = Route.useLoaderData();
   return (
     <>
-      <PageHeader title="Settings" description="API keys and the connector for Claude or ChatGPT." />
+      <PageHeader title="Settings" description="The connector for Claude or ChatGPT, and the voice for stories." />
       <Card>
         <CardHeader>
-          <CardTitle>API keys</CardTitle>
-          <CardDescription>Saved keys are used instead of the Worker secrets. They are never shown again, only their last 4 characters.</CardDescription>
+          <CardTitle>API key</CardTitle>
+          <CardDescription>A saved key is used instead of the Worker secret. It is never shown again, only its last 4 characters.</CardDescription>
         </CardHeader>
         <CardContent className="divide-y">{keys.map(key => <ApiKeyRow key={key.provider} status={key} />)}</CardContent>
       </Card>
@@ -106,7 +105,7 @@ function Connector({ createdAt }: { createdAt: string | null }) {
       <CardHeader>
         <CardTitle>Claude or ChatGPT</CardTitle>
         <CardDescription>
-          Connect your Claude or ChatGPT subscription, then ask it: “Prepare today’s suggestions in my English app.” It writes the cards (or skips weak phrases), and you choose Learn it or Skip here.
+          Your Claude or ChatGPT subscription is the app’s AI. Connect it, then ask: “Find 10 new phrases in my English app”, “Add <i>circle back</i> to my English app” or “Write me a story with my phrases”. New cards wait on Today, where you choose Learn it or Skip.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">

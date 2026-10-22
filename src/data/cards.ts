@@ -3,7 +3,7 @@ import { createServerFn } from '@tanstack/react-start';
 import { env } from 'cloudflare:workers';
 import { z } from 'zod';
 import { listBooks } from '@/lib/books-db';
-import { countPending, getCandidate, getSuggestions } from '@/lib/candidates-db';
+import { countPending, getReadyCandidates } from '@/lib/candidates-db';
 import { getOverview, getUnmemorizedCards, listCards } from '@/lib/cards-db';
 import { connectorCreatedAt, getKeyStatuses } from '@/lib/settings';
 import { getStory, listStories } from '@/lib/stories';
@@ -16,7 +16,7 @@ export type CardsSearch = z.infer<typeof cardsSearchSchema>;
 
 export const getToday = createServerFn().handler(async () => ({
   overview: await getOverview(env.DB),
-  ...await getSuggestions(env.DB),
+  ready: await getReadyCandidates(env.DB),
 }));
 
 export const getLibrary = createServerFn()
@@ -27,13 +27,9 @@ export const getLibrary = createServerFn()
     books: await listBooks(env.DB),
   }));
 
-export const getCandidateById = createServerFn()
-  .validator(z.object({ id: z.number().int().positive() }))
-  .handler(({ data }) => getCandidate(env.DB, data.id));
-
 export const getStoriesPage = createServerFn().handler(async () => ({
   stories: await listStories(env.DB),
-  learning: await getUnmemorizedCards(env.DB, 60),
+  learning: (await getUnmemorizedCards(env.DB, 1)).length > 0,
 }));
 
 export const getStoryById = createServerFn()
