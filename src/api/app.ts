@@ -58,8 +58,25 @@ export function toPracticeCard(card: Card) {
 }
 export type PracticeCard = ReturnType<typeof toPracticeCard>;
 
-const audioResponse = (audio: { body: ReadableStream | Uint8Array<ArrayBuffer>; contentType: string }) =>
-  new Response(audio.body, { headers: { 'Content-Type': audio.contentType, 'Cache-Control': 'private, max-age=31536000, immutable' } });
+// Answers Range requests (206), which Safari needs to play audio. Clips and stories are small, so the whole file is read.
+async function audioResponse(audio: { body: ReadableStream | Uint8Array<ArrayBuffer>; contentType: string }, range: string | undefined): Promise<Response> {
+  const bytes = new Uint8Array(await new Response(audio.body).arrayBuffer());
+  const headers = { 'Content-Type': audio.contentType, 'Cache-Control': 'private, max-age=31536000, immutable', 'Accept-Ranges': 'bytes' };
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range ?? '');
+  if (!match || (!match[1] && !match[2])) return new Response(bytes, { headers: { ...headers, 'Content-Length': String(bytes.length) } });
+  const start = match[1] ? Number(match[1]) : Math.max(0, bytes.length - Number(match[2]));
+  const end = match[1] && match[2] ? Math.min(Number(match[2]), bytes.length - 1) : bytes.length - 1;
+  if (start >= bytes.length || start > end) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${bytes.length}` } });
+  return new Response(bytes.slice(start, end + 1), { status: 206, headers: { ...headers, 'Content-Range': `bytes ${start}-${end}/${bytes.length}`, 'Content-Length': String(end - start + 1) } });
+}
+
+// Requests that change data must come from the app itself (or carry no Origin, like curl); a page on another
+// site cannot make the learner's browser change anything.
+api.use('/api/*', async (c, next) => {
+  const origin = c.req.header('Origin');
+  if (c.req.method !== 'GET' && origin && origin !== new URL(c.req.url).origin) return c.json({ error: 'Forbidden', message: 'Cross-site request.' }, 403);
+  await next();
+});
 
 api.get('/health', c => c.json({ service: 'English SRS', status: 'running', runtime: 'cloudflare-workers', timestamp: new Date().toISOString() }));
 
@@ -120,7 +137,7 @@ api.post('/api/candidates/:id/skip', async c => {
 api.get('/api/audio', async c => {
   const text = normalizeClipText(c.req.query('text') ?? '');
   if (!text || text.length > MAX_CLIP_CHARS) throw new ApiError(400, 'Validation error', `Text must be 1–${MAX_CLIP_CHARS} characters.`);
-  return audioResponse(await getClip(c.env, text));
+  return audioResponse(await getClip(c.env, text), c.req.header('Range'));
 });
 
 api.get('/api/stories', async c => c.json({ stories: (await listStories(c.env.DB)).map(({ id, title, kind }) => ({ id, title, kind })) }));
@@ -128,7 +145,7 @@ api.get('/api/stories', async c => c.json({ stories: (await listStories(c.env.DB
 api.get('/api/stories/:id/audio', async c => {
   const story = await getStory(c.env.DB, idParam(c.req.param('id')));
   if (!story) throw new ApiError(404, 'Not found', 'Story was not found.');
-  return audioResponse(await getStoryAudio(c.env, story));
+  return audioResponse(await getStoryAudio(c.env, story), c.req.header('Range'));
 });
 
 api.delete('/api/stories/:id', async c => {
