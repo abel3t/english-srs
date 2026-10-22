@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { SpeedControl } from '@/components/speed-control';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
-import { formatTime, registerAudio } from '@/lib/audio';
+import { audioErrorMessage, formatTime, registerAudio } from '@/lib/audio';
 import { describe } from '@/lib/player';
 
 interface AudioPlayerProps {
@@ -28,6 +28,7 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(funct
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(Number.NaN);
   const [loop, setLoop] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => (audio.current ? registerAudio(audio.current) : undefined), []);
   useEffect(() => { if (audio.current) audio.current.loop = loop; }, [loop]);
@@ -36,6 +37,8 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(funct
     const element = audio.current;
     if (!element) return;
     if (element.paused) {
+      // After a failure (e.g. a new key was set since) the audio is requested again.
+      if (element.error) element.load();
       setStatus('loading');
       void element.play().catch(() => setStatus(current => (current === 'error' ? current : 'paused')));
     } else element.pause();
@@ -65,14 +68,14 @@ export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(funct
           <Repeat className="size-4" aria-hidden />
         </Button>
       </div>
-      {status === 'error' && <p className="px-2 text-xs text-destructive">The audio could not be loaded. Check your ElevenLabs key in Settings, then try again.</p>}
+      {status === 'error' && error && <p role="alert" className="px-2 text-xs text-destructive">{error}</p>}
       <audio ref={audio} preload="none" src={src} className="hidden"
         onTimeUpdate={event => setTime(event.currentTarget.currentTime)}
         onDurationChange={event => setDuration(event.currentTarget.duration)}
         onPlay={() => describe({ title, subtitle: 'Story', kind: 'story' })}
         onWaiting={() => setStatus('loading')} onPlaying={() => setStatus('playing')}
         onPause={() => setStatus(current => (current === 'error' ? current : 'paused'))}
-        onEnded={() => setStatus('idle')} onError={() => setStatus('error')} />
+        onEnded={() => setStatus('idle')} onError={() => { setStatus('error'); setError(null); void audioErrorMessage(src).then(setError); }} />
     </div>
   );
 });

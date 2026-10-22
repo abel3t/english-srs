@@ -13,7 +13,7 @@ import { DRILL_TIMES, formatInterval, nextSchedule, ratings } from '../lib/srs';
 import { connectorUser, createConnectorToken, getKeyStatuses, providers, removeConnectorToken, setApiKey } from '../lib/settings';
 import { deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
 import { handleMcp } from './mcp';
-import { MissingElevenLabsKeyError } from '../lib/speech';
+import { ElevenLabsKeyError } from '../lib/speech';
 
 // Every /api route but /api/auth/* works for the signed-in user (userId); the connector for its link's user.
 export const api = new Hono<{ Bindings: Bindings; Variables: { userId: string } }>();
@@ -23,7 +23,7 @@ class ApiError extends Error {
 }
 
 api.onError((error, c) => {
-  if (error instanceof MissingElevenLabsKeyError) return c.json({ error: 'ElevenLabs key required', message: error.message }, 403);
+  if (error instanceof ElevenLabsKeyError) return c.json({ error: 'ElevenLabs key needed', message: error.message }, 403);
   if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
   if (error instanceof ApiError) return c.json({ error: error.title, message: error.message }, error.status);
   console.error(`${c.req.method} ${c.req.path} failed`, error);

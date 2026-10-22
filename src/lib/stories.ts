@@ -1,5 +1,5 @@
 import type { Bindings } from '../bindings';
-import { CLIP_VERSION, CONVERSATION_SPEAKERS, type StoryKind } from '../constants';
+import { STORY_AUDIO_VERSION, CONVERSATION_SPEAKERS, type StoryKind } from '../constants';
 import { speakStory } from './speech';
 import { withoutAudioTags } from './text';
 
@@ -48,15 +48,15 @@ export async function deleteStory(env: Bindings, userId: string, id: number): Pr
   return true;
 }
 
-// Audio is made once (requires the user's ElevenLabs key; Aura-2 when its credits are used up) and then
-// served from R2. `story` comes from getStory/saveStory, so it is the user's own.
+// Audio is made once (requires the user's ElevenLabs key) and then served from R2. `story` comes from
+// getStory/saveStory, so it is the user's own.
 export async function getStoryAudio(env: Bindings, userId: string, story: Story): Promise<{ body: ReadableStream | Uint8Array<ArrayBuffer>; contentType: string }> {
   // The user id keeps keys unique even when story ids start again (a new database).
-  const key = `stories/${userId}/${story.id}-v${CLIP_VERSION}`;
+  const key = `stories/${userId}/${story.id}-v${STORY_AUDIO_VERSION}`;
   const cached = await env.AUDIO.get(key);
   if (cached) return { body: cached.body, contentType: cached.httpMetadata?.contentType ?? 'audio/mpeg' };
   const audio = await speakStory(env, userId, story.lines.map(line => ({ speaker: line.speaker, text: line.spoken })));
-  await env.AUDIO.put(key, audio.bytes, { httpMetadata: { contentType: audio.contentType }, customMetadata: { provider: audio.provider } });
+  await env.AUDIO.put(key, audio.bytes, { httpMetadata: { contentType: audio.contentType } });
   await env.DB.prepare('UPDATE Stories SET audioKey = ?1 WHERE id = ?2').bind(key, story.id).run();
   return { body: audio.bytes, contentType: audio.contentType };
 }

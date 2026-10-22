@@ -88,6 +88,17 @@ export function registerAudio(element: HTMLAudioElement): () => void {
   };
 }
 
+// An <audio> element never says why its request failed; asking again returns the server's message, e.g. that the
+// ElevenLabs credits are used up. Only for story audio: asking again can make it, and that is what the play wanted.
+export async function audioErrorMessage(src: string): Promise<string> {
+  const fallback = 'The audio could not be loaded. Try again.';
+  try {
+    const response = await fetch(src, { headers: { Range: 'bytes=0-0' } });
+    if (response.ok) { void response.body?.cancel(); return fallback; }
+    return ((await response.json()) as { message?: string }).message || fallback;
+  } catch { return fallback; }
+}
+
 export const formatTime = (seconds: number) => {
   if (!Number.isFinite(seconds)) return '--:--';
   const whole = Math.max(0, Math.floor(seconds));

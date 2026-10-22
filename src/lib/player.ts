@@ -2,7 +2,7 @@
 // story's audio, that keeps playing while the learner moves between pages. Speed, one-sound-at-a-time and listening
 // time come from registerAudio, like every other player.
 import { useSyncExternalStore } from 'react';
-import { clipUrl, registerAudio } from './audio';
+import { audioErrorMessage, clipUrl, registerAudio } from './audio';
 
 export type Track = {
   src: string;
@@ -13,9 +13,9 @@ export type Track = {
   kind: 'sentence' | 'story';
 };
 type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
-type PlayerSnapshot = { tracks: Track[]; index: number; status: PlayerStatus; loop: boolean; time: number; duration: number };
+type PlayerSnapshot = { tracks: Track[]; index: number; status: PlayerStatus; loop: boolean; time: number; duration: number; error: string | null };
 
-const EMPTY: PlayerSnapshot = { tracks: [], index: 0, status: 'idle', loop: false, time: 0, duration: Number.NaN };
+const EMPTY: PlayerSnapshot = { tracks: [], index: 0, status: 'idle', loop: false, time: 0, duration: Number.NaN, error: null };
 let snapshot = EMPTY;
 const listeners = new Set<() => void>();
 const update = (patch: Partial<PlayerSnapshot>) => { snapshot = { ...snapshot, ...patch }; for (const listener of listeners) listener(); };
@@ -90,6 +90,9 @@ function element(): HTMLAudioElement {
   created.addEventListener('ended', () => advance());
   created.addEventListener('error', () => {
     if (!snapshot.tracks.length || !created.getAttribute('src')) return;
+    // A story that could not be made says why (no key, refused, credits used up); the list goes on meanwhile.
+    const failed = snapshot.tracks[snapshot.index];
+    if (failed?.kind === 'story') void audioErrorMessage(failed.src).then(message => { if (snapshot.tracks.includes(failed)) update({ error: `${failed.title}: ${message}` }); });
     failures += 1;
     if (failures >= snapshot.tracks.length) { update({ status: 'paused' }); return; }
     advance();
@@ -109,6 +112,8 @@ function load(index: number) {
   update({ index, status: 'loading', time: 0, duration: same ? player.duration : Number.NaN });
   describe(track);
   if (!same) player.setAttribute('src', track.src);
+  // After a failure (e.g. a new key was set since) the same source is requested again.
+  else if (player.error) player.load();
   player.currentTime = 0;
   player.play().catch((error: unknown) => {
     // Interrupted by the next load or by another player: nothing to do. Autoplay refused: wait for a tap.
@@ -128,7 +133,7 @@ export const player = {
   play(tracks: Track[], start = 0) {
     if (!tracks.length) return;
     failures = 0;
-    update({ tracks });
+    update({ tracks, error: null });
     load(start);
   },
   toggle() {

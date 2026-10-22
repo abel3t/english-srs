@@ -19,7 +19,7 @@ export const Route = createFileRoute('/settings')({
 });
 
 const providerInfo: Record<Provider, { name: string; use: string; url: string }> = {
-  elevenlabs: { name: 'ElevenLabs', use: 'Required to create story and conversation audio. When the month’s credits run out, stories use the free Aura-2 voice.', url: 'https://elevenlabs.io/app/settings/api-keys' },
+  elevenlabs: { name: 'ElevenLabs', use: 'Required to create story and conversation audio. When its credits run out, paste another key here.', url: 'https://elevenlabs.io/app/settings/api-keys' },
 };
 
 function Settings() {

@@ -8,11 +8,12 @@ import { addCandidates, checkPhrase, getKnownPhrases, getSkipFeedback, type Card
 import { MEMORIZED_DAYS, listCards } from '../lib/cards-db';
 import { getStoryAudio, listStories, saveStory } from '../lib/stories';
 import { normalizeText } from '../lib/text';
-import { MissingElevenLabsKeyError } from '../lib/speech';
+import { ElevenLabsKeyError } from '../lib/speech';
 
 // Claude or ChatGPT (the learner's own subscription) is the app's only AI: it reads the imported documents, writes the
 // cards and the stories. The learner still reviews each card in the Queue: "Learn it", "I know it" or "Not useful".
-const [first, second] = CONVERSATION_SPEAKERS.map(speaker => speaker.name);
+const speakers = CONVERSATION_SPEAKERS.map(speaker => speaker.name) as [string, ...string[]];
+const speakerList = `${speakers.slice(0, -1).join(', ')} and ${speakers.at(-1)}`;
 const MAX_PHRASES = 30;
 const MAX_STORY_CHARS = 2500;
 
@@ -184,11 +185,11 @@ function buildServer(env: Bindings, userId: string): McpServer {
 
   server.registerTool('save_story', {
     title: 'Save a story or conversation',
-    description: `Saves listening and typing practice built from phrases the learner is memorizing. Format: "conversation" (${first} and ${second}, 12 to 18 short turns, one to three sentences each) or "story" (first person, told aloud to a friend, 8 to 12 sentences, one per line), whichever makes the phrases sound most natural. Relaxed spoken American English with contractions; each phrase used with its real meaning, never forced in. To bring the voices to life, add a few audio tags in square brackets inside lines with words, such as "[laughs] No way." or "Okay. [sighs] Fine.": they are heard, not shown or typed (others: [whispers], [excited], [sarcastic]). No narration, Markdown or emojis. At most ${MAX_STORY_CHARS} characters in total (audio credits).`,
+    description: `Saves listening and typing practice built from phrases the learner is memorizing. Format: "conversation" (two or three of ${speakerList}, 12 to 18 short turns, one to three sentences each) or "story" (first person, told aloud to a friend, 8 to 12 sentences, one per line), whichever makes the phrases sound most natural. Relaxed spoken American English with contractions; each phrase used with its real meaning, never forced in. To bring the voices to life, add a few audio tags in square brackets inside lines with words, such as "[laughs] No way." or "Okay. [sighs] Fine.": they are heard, not shown or typed (others: [whispers], [excited], [sarcastic]). No narration, Markdown or emojis. At most ${MAX_STORY_CHARS} characters in total (audio credits).`,
     inputSchema: {
       format: z.enum(['conversation', 'story']),
       title: z.string().trim().min(1).max(120),
-      lines: z.array(z.object({ speaker: z.enum([first, second]).optional().describe('Conversations only'), text: z.string().trim().min(1).max(400) })).min(3).max(30),
+      lines: z.array(z.object({ speaker: z.enum(speakers).optional().describe('Conversations only'), text: z.string().trim().min(1).max(400) })).min(3).max(30),
       phrases: z.array(z.string().trim().min(1).max(120)).max(15).describe('The phrases you used, exactly as list_cards gave them (they are hidden in blank mode)'),
     },
   }, async ({ format, title, lines, phrases }) => {
@@ -198,7 +199,7 @@ function buildServer(env: Bindings, userId: string): McpServer {
       const story = await saveStory(env.DB, userId, { kind: format, title, lines: lines.map(line => ({ speaker: line.speaker ?? null, text: line.text })), phrases });
       // Make the audio now, once: made on first play, two requests at once could spend ElevenLabs credits twice.
       const audio = await getStoryAudio(env, userId, story).then(() => 'ready', error => {
-        if (error instanceof MissingElevenLabsKeyError) return error.message;
+        if (error instanceof ElevenLabsKeyError) return error.message;
         console.error('Story audio failed', error);
         return 'will be made when first played';
       });
