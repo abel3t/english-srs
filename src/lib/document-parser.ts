@@ -1,7 +1,9 @@
-// Browser-only: turns a PDF or EPUB into chapters of plain text. The import dialog then saves the prose of the
-// chosen chapters as short parts, which Claude or ChatGPT reads through the connector.
+// Browser-only: turns a PDF, EPUB, Word file or pasted text into chapters of plain text. The import dialog then saves
+// the prose of the chosen chapters as short parts, which Claude or ChatGPT reads through the connector.
+import type { DocumentFormat } from './documents-db';
+
 export type Chapter = { title: string; text: string; words: number };
-export type ParsedBook = { title: string; author: string | null; format: 'pdf' | 'epub'; chapters: Chapter[] };
+export type ParsedDocument = { title: string; author: string | null; format: DocumentFormat; chapters: Chapter[] };
 
 const wordCount = (text: string) => text.split(/\s+/).filter(Boolean).length;
 const clean = (text: string) => text.replace(/\s+/g, ' ').trim();
@@ -10,17 +12,83 @@ const chapter = (title: string, paragraphs: string[]): Chapter => {
   return { title: clean(title) || 'Untitled', text, words: wordCount(text) };
 };
 
-export async function parseBook(file: File): Promise<ParsedBook> {
+export const FILE_TYPES = '.pdf,.epub,.docx,application/pdf,application/epub+zip,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+export async function parseDocument(file: File): Promise<ParsedDocument> {
   const buffer = new Uint8Array(await file.arrayBuffer());
-  const fallbackTitle = file.name.replace(/\.(pdf|epub)$/i, '');
+  const fallbackTitle = file.name.replace(/\.(pdf|epub|docx)$/i, '');
   if (/\.epub$/i.test(file.name) || file.type === 'application/epub+zip') return parseEpub(buffer, fallbackTitle);
   if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') return parsePdf(buffer, fallbackTitle);
-  throw new Error('Please choose a PDF or EPUB file.');
+  if (/\.docx$/i.test(file.name)) return parseDocx(buffer, fallbackTitle);
+  if (/\.doc$/i.test(file.name)) throw new Error('Old .doc files cannot be read. Open it in Word or Google Docs and save it as .docx.');
+  throw new Error('Please choose a PDF, EPUB or Word (.docx) file.');
+}
+
+// ---------- Pasted or typed text ----------
+
+// Blank lines separate paragraphs (lines without one between them are one paragraph); with no blank line at all,
+// each line is a paragraph, except a line cut mid-sentence (copied from a PDF or an email), which goes on in the next.
+// Markdown headings ("# Title") start a new section.
+export function parseText(title: string, text: string): ParsedDocument {
+  const normalized = text.replace(/\r\n?/g, '\n').trim();
+  const blocks = /\n\s*\n/.test(normalized) ? normalized.split(/\n\s*\n/) : joinCutLines(normalized.split('\n').map(line => line.trim()).filter(Boolean));
+  const name = clean(title) || 'Pasted text';
+  const sections: Array<{ title: string; paragraphs: string[] }> = [{ title: name, paragraphs: [] }];
+  for (const block of blocks) {
+    const heading = /^#{1,3}\s+(.+)$/.exec(block.trim());
+    if (heading) sections.push({ title: heading[1], paragraphs: [] });
+    else sections[sections.length - 1].paragraphs.push(clean(block));
+  }
+  const chapters = sections.filter(section => section.paragraphs.some(Boolean)).map(section => chapter(section.title, section.paragraphs));
+  return { title: name, author: null, format: 'text', chapters };
+}
+
+function joinCutLines(lines: string[]): string[] {
+  const joined: string[] = [];
+  for (const line of lines) {
+    const last = joined.at(-1);
+    if (last && !/^#/.test(line) && !ENDS_SENTENCE.test(last) && (/^[a-z]/.test(line) || /[,;\-–—]$/.test(last))) joined[joined.length - 1] = joinBroken(last, line);
+    else joined.push(line);
+  }
+  return joined;
+}
+
+// ---------- Word (.docx) ----------
+
+async function parseDocx(data: Uint8Array, fallbackTitle: string): Promise<ParsedDocument> {
+  if (import.meta.env.SSR) throw new Error('Word parsing runs in the browser only');
+  const { unzipSync, strFromU8 } = await import('fflate');
+  const files = unzipSync(data);
+  const body = files['word/document.xml'];
+  if (!body) throw new Error('This is not a readable Word (.docx) file.');
+  const doc = parseMarkup(strFromU8(body), 'application/xml');
+  const core = files['docProps/core.xml'] && parseMarkup(strFromU8(files['docProps/core.xml']), 'application/xml');
+  const meta = (name: string) => clean((core && core.getElementsByTagNameNS('*', name)[0]?.textContent) ?? '');
+
+  // Title and level 1–2 headings start chapters; tables and text boxes are left out like in books.
+  const inside = (element: Element, names: string[]) => {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) if (names.includes(parent.localName)) return true;
+    return false;
+  };
+  const sections: Array<{ title: string; paragraphs: string[] }> = [{ title: meta('title') || fallbackTitle, paragraphs: [] }];
+  // Word's own paragraphs only (charts and drawings have paragraphs in other namespaces).
+  const word = doc.documentElement.namespaceURI;
+  for (const paragraph of doc.getElementsByTagNameNS(word, 'p')) {
+    if (inside(paragraph, ['tbl', 'txbxContent'])) continue;
+    const text = clean([...paragraph.getElementsByTagNameNS('*', '*')]
+      .map(node => (node.localName === 't' ? node.textContent ?? '' : ['tab', 'br', 'cr'].includes(node.localName) ? ' ' : '')).join(''));
+    if (!text) continue;
+    const styleName = paragraph.getElementsByTagNameNS(word, 'pStyle')[0]?.getAttributeNS(word, 'val') ?? '';
+    if (/^(title|heading ?[12])$/i.test(styleName)) sections.push({ title: text, paragraphs: [] });
+    else sections[sections.length - 1].paragraphs.push(text);
+  }
+  const chapters = sections.filter(section => section.paragraphs.length).map(section => chapter(section.title, section.paragraphs));
+  return { title: meta('title') || fallbackTitle, author: meta('creator') || null, format: 'docx', chapters };
 }
 
 // ---------- PDF ----------
 
-async function parsePdf(data: Uint8Array, fallbackTitle: string): Promise<ParsedBook> {
+async function parsePdf(data: Uint8Array, fallbackTitle: string): Promise<ParsedDocument> {
   // Compile-time guard: keeps pdf.js (~2 MB) out of the Worker bundle; parsing only ever happens in the browser.
   if (import.meta.env.SSR) throw new Error('PDF parsing runs in the browser only');
   const pdfjs = await import('pdfjs-dist');
@@ -138,7 +206,7 @@ function resolvePath(base: string, href: string): string {
   return resolved.join('/');
 }
 
-async function parseEpub(data: Uint8Array, fallbackTitle: string): Promise<ParsedBook> {
+async function parseEpub(data: Uint8Array, fallbackTitle: string): Promise<ParsedDocument> {
   if (import.meta.env.SSR) throw new Error('EPUB parsing runs in the browser only');
   const { unzipSync, strFromU8 } = await import('fflate');
   const files = unzipSync(data);

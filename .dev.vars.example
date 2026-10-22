@@ -1,2 +1,6 @@
-# Optional: the key can also be set on the website's Settings page (that one is used first).
-ELEVENLABS_API_KEY=your-elevenlabs-api-key
+# Better Auth: a long random string (e.g. `openssl rand -base64 32`). Set it with `wrangler secret put` in production.
+BETTER_AUTH_SECRET=change-me-to-a-long-random-string
+# The superadmin, created on the first visit to the sign-in page when no admin exists yet. They create every other
+# account on the Admin page (there is no sign-up). Each user sets their own ElevenLabs key in Settings.
+SUPERADMIN_EMAIL=you@example.com
+SUPERADMIN_PASSWORD=change-me-too

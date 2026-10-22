@@ -1,8 +1,9 @@
 import type { Bindings } from '../bindings';
 import { AURA_MODEL, CONVERSATION_SPEAKERS, CLIP_VOICE, ELEVENLABS_MODEL, STORY_VOICE } from '../constants';
 import { getApiKey } from './settings';
+import { withoutAudioTags } from './text';
 
-export type Audio = { bytes: Uint8Array<ArrayBuffer>; contentType: string };
+type Audio = { bytes: Uint8Array<ArrayBuffer>; contentType: string };
 type Line = { speaker: string | null; text: string };
 
 // Each request stays under both providers' 2,000-character limit; MP3 parts can simply be joined.
@@ -38,6 +39,10 @@ export async function speakClip(env: Bindings, text: string): Promise<Audio> {
 
 class QuotaError extends Error {}
 
+export class MissingElevenLabsKeyError extends Error {
+  constructor() { super('Add your ElevenLabs API key in Settings to create story audio.'); }
+}
+
 async function elevenLabsDialogue(apiKey: string, lines: Line[]): Promise<Uint8Array> {
   const voiceOf = (speaker: string | null) => (CONVERSATION_SPEAKERS.find(item => item.name === speaker) ?? STORY_VOICE).elevenLabs;
   const response = await fetch('https://api.elevenlabs.io/v1/text-to-dialogue?output_format=mp3_44100_128', {
@@ -53,24 +58,23 @@ async function elevenLabsDialogue(apiKey: string, lines: Line[]): Promise<Uint8A
   return new Uint8Array(await response.arrayBuffer());
 }
 
-// Stories use ElevenLabs (the most natural voices; about 4 stories a month fit its free plan). Without a key,
-// or when this month's ElevenLabs credits are used up, Aura-2 reads the story instead.
-export async function speakStory(env: Bindings, lines: Line[]): Promise<Audio & { provider: 'elevenlabs' | 'aura' }> {
-  const apiKey = await getApiKey(env, 'elevenlabs');
-  if (apiKey) {
-    try {
-      const parts: Uint8Array[] = [];
-      for (const chunk of chunkLines(lines)) parts.push(await elevenLabsDialogue(apiKey, chunk));
-      return { ...joinMp3(parts), provider: 'elevenlabs' };
-    } catch (error) {
-      if (!(error instanceof QuotaError)) throw error;
-      console.warn('ElevenLabs credits are used up; using Aura-2 for this story');
-    }
+// Story generation requires the user's ElevenLabs key. Aura-2 is only a fallback for an exhausted quota.
+export async function speakStory(env: Bindings, userId: string, lines: Line[]): Promise<Audio & { provider: 'elevenlabs' | 'aura' }> {
+  const apiKey = await getApiKey(env.DB, userId, 'elevenlabs');
+  if (!apiKey) throw new MissingElevenLabsKeyError();
+  try {
+    const parts: Uint8Array[] = [];
+    for (const chunk of chunkLines(lines)) parts.push(await elevenLabsDialogue(apiKey, chunk));
+    return { ...joinMp3(parts), provider: 'elevenlabs' };
+  } catch (error) {
+    if (!(error instanceof QuotaError)) throw error;
+    console.warn('ElevenLabs credits are used up; using Aura-2 for this story');
   }
   const auraVoiceOf = (speaker: string | null) => (CONVERSATION_SPEAKERS.find(item => item.name === speaker) ?? STORY_VOICE).aura;
   const parts: Uint8Array[] = [];
   // One request per speaker turn (Aura has one voice per request); a story's lines are read in chunks.
   const groups = lines.some(line => line.speaker) ? lines.map(line => [line]) : chunkLines(lines);
-  for (const group of groups) parts.push(await aura(env, group.map(line => line.text).join(' '), auraVoiceOf(group[0].speaker)));
+  // Aura would read audio tags aloud.
+  for (const group of groups) parts.push(await aura(env, withoutAudioTags(group.map(line => line.text).join(' ')), auraVoiceOf(group[0].speaker)));
   return { ...joinMp3(parts), provider: 'aura' };
 }

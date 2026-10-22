@@ -1,37 +1,52 @@
-import { Link, createFileRoute, useRouter } from '@tanstack/react-router';
+import { Link, createFileRoute } from '@tanstack/react-router';
+import { Headphones, Keyboard } from 'lucide-react';
 import { useState } from 'react';
 import { PageHeader } from '@/components/page-header';
-import { StatusMessage, type Status } from '@/components/status-message';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { LearnDialog } from '@/components/learn-dialog';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PracticeSetupDialog } from '@/components/practice-setup-dialog';
+import { StudyChart } from '@/components/study-chart';
 import { getToday } from '@/data/cards';
-import { errorMessage, postJson } from '@/lib/api-client';
-import type { Candidate } from '@/lib/candidates-db';
-import { findPhraseSpan } from '@/lib/practice';
+import { player, sentenceTrack } from '@/lib/player';
+import { formatMinutes } from '@/lib/study';
 
 export const Route = createFileRoute('/')({
   loader: () => getToday(),
   component: Today,
 });
 
-function Example({ example, phrase }: { example: string; phrase: string }) {
-  const span = findPhraseSpan(example, phrase);
-  if (!span) return <span>{example}</span>;
-  return <span>{example.slice(0, span.start)}<mark className="rounded bg-amber-100 px-0.5">{example.slice(span.start, span.end)}</mark>{example.slice(span.end)}</span>;
-}
-
+// How much was studied (typing and listening), then the two jobs of the day: type what is due, and review the
+// queue of new cards written by Claude or ChatGPT.
 function Today() {
-  const { overview, ready } = Route.useLoaderData();
-  const [learning, setLearning] = useState<Candidate | null>(null);
+  const { overview, pending, peek, study, listen } = Route.useLoaderData();
+  const listenToCards = () => player.play(listen.flatMap(card => [
+    sentenceTrack(card.phrase, card.name),
+    ...card.examples.map((example, index) => sentenceTrack(example, `${card.name} · Example ${index + 1}`)),
+  ]));
   const [starting, setStarting] = useState(false);
-  const metrics = [['Due to type', overview.due], ['Typed today', overview.reviewed], ['Learning', overview.total - overview.mature], ['Memorized', overview.mature]] as const;
+  const today = study.today;
+  const metrics = [['Due to type', overview.due], ['Learning', overview.total - overview.mature], ['Memorized', overview.mature]] as const;
   return (
     <>
-      <PageHeader title="Today" description="Practise what is due, then choose which new cards to learn." />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <PageHeader title="Today" description="Practise what is due, listen, then review the new cards in your queue." />
+      <Card className="mb-4">
+        <CardHeader>
+          <CardDescription>Studied today</CardDescription>
+          <CardTitle className="text-4xl font-semibold tabular-nums">{formatMinutes(today.typingSeconds + today.listeningSeconds)}</CardTitle>
+          <CardAction className="text-right text-sm">
+            <p className="font-medium tabular-nums">{study.streak ? `${study.streak}-day streak` : 'No streak yet'}</p>
+            <p className="text-muted-foreground tabular-nums">{formatMinutes(study.weekSeconds)} this week</p>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <p className="text-sm text-muted-foreground tabular-nums">
+            Typing {formatMinutes(today.typingSeconds)} · {today.sentences} sentence{today.sentences === 1 ? '' : 's'} · Listening {formatMinutes(today.listeningSeconds)}
+          </p>
+          <StudyChart days={study.days} />
+          <p className="text-xs text-muted-foreground">Counted on the low side: typing at 40 words a minute, listening by the time you actually listened (never more than the audio's length; pauses and skips don't count).</p>
+        </CardContent>
+      </Card>
+      <div className="grid grid-cols-3 gap-3">
         {metrics.map(([label, value]) => (
           <Card key={label} size="sm"><CardContent>
             <div className="text-2xl font-semibold">{value}</div>
@@ -39,53 +54,31 @@ function Today() {
           </CardContent></Card>
         ))}
       </div>
-      <Button size="lg" className="mt-4 w-full sm:w-auto" onClick={() => setStarting(true)}>
-        {overview.due ? `Start practice · ${overview.due} due` : 'Start practice'}
-      </Button>
+      {/* The two main actions, side by side; full width on phones. */}
+      <div className="mt-4 grid gap-2 sm:flex">
+        <Button size="lg" className="gap-2" onClick={() => setStarting(true)}>
+          <Keyboard aria-hidden />{overview.due ? `Start practice · ${overview.due} due` : 'Start practice'}
+        </Button>
+        <Button size="lg" variant="secondary" className="gap-2" disabled={!listen.length} onClick={listenToCards}>
+          <Headphones aria-hidden />Listen to your cards{listen.length ? ` · ${listen.length}` : ''}
+        </Button>
+      </div>
 
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle>New cards</CardTitle>
+          <CardTitle>Queue</CardTitle>
           <CardDescription>
-            Written by Claude or ChatGPT from your books. Ask it: “Find 10 new phrases in my English app”, or “Add <i>circle back</i> to my English app”.
+            {pending ? `${pending} new card${pending === 1 ? '' : 's'} waiting for your review.` : 'No new cards waiting.'}
           </CardDescription>
+          {pending > 0 && <CardAction><Button asChild><Link to="/queue">Review</Link></Button></CardAction>}
         </CardHeader>
-        <CardContent className="divide-y">
-          {ready.length
-            ? ready.map(candidate => <NewCard key={candidate.id} candidate={candidate} onLearn={() => setLearning(candidate)} />)
-            : <p className="text-sm text-muted-foreground">No new cards waiting. <Link to="/library" className="underline">Import a book</Link> and <Link to="/settings" className="underline">connect Claude or ChatGPT</Link> first.</p>}
+        <CardContent className="text-sm text-muted-foreground">
+          {pending
+            ? <p>Next: <span className="text-foreground">{peek.join(' · ')}</span>{pending > peek.length && ' …'}</p>
+            : <p>Ask Claude or ChatGPT: “Find 10 new phrases in PhraseLoop”. Nothing to read yet? <Link to="/library" className="underline">Import something to read</Link> and <Link to="/settings" className="underline">connect Claude or ChatGPT</Link>.</p>}
         </CardContent>
       </Card>
-      <LearnDialog candidate={learning} open={!!learning} onOpenChange={open => { if (!open) setLearning(null); }} />
       <PracticeSetupDialog open={starting} onOpenChange={setStarting} />
     </>
-  );
-}
-
-function NewCard({ candidate, onLearn }: { candidate: Candidate; onLearn: () => void }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<Status>(null);
-
-  async function skip() {
-    setBusy(true);
-    try { await postJson(`/api/candidates/${candidate.id}/skip`); await router.invalidate(); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); setBusy(false); }
-  }
-
-  return (
-    <div className="grid gap-1.5 py-3 first:pt-0 last:pb-0">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold">{candidate.phrase}</span>
-        <Badge variant="secondary">{candidate.draft.score}/10</Badge>
-        <div className="ml-auto flex gap-1">
-          <Button size="sm" onClick={onLearn}>Learn?</Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={skip}>Skip</Button>
-        </div>
-      </div>
-      {candidate.example && <p className="text-sm text-muted-foreground"><Example example={candidate.example} phrase={candidate.phrase} /></p>}
-      <p className="text-sm">{candidate.draft.meaning}</p>
-      <StatusMessage status={status} />
-    </div>
   );
 }

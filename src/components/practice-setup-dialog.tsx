@@ -9,7 +9,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { apiRequest } from '@/lib/api-client';
 
 export type PracticeMode = 'mixed' | 'phrase' | 'sentences' | 'story';
-export type PracticeSettings = { mode: PracticeMode; blank: boolean; story?: number };
+type PracticeSettings = { mode: PracticeMode; blank: boolean; story?: number };
 
 const MODES: Array<{ value: PracticeMode; label: string; hint: string }> = [
   { value: 'mixed', label: 'Mixed', hint: 'Each due card: its phrase or one of its sentences.' },

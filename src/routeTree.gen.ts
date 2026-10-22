@@ -10,8 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as LibraryRouteImport } from './routes/library'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as PracticeRouteImport } from './routes/practice'
+import { Route as QueueRouteImport } from './routes/queue'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StoriesRouteImport } from './routes/stories'
 
@@ -20,14 +23,29 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LibraryRoute = LibraryRouteImport.update({
   id: '/library',
   path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PracticeRoute = PracticeRouteImport.update({
   id: '/practice',
   path: '/practice',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueueRoute = QueueRouteImport.update({
+  id: '/queue',
+  path: '/queue',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -43,38 +61,75 @@ const StoriesRoute = StoriesRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/library': typeof LibraryRoute
+  '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
+  '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/stories': typeof StoriesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/library': typeof LibraryRoute
+  '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
+  '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/stories': typeof StoriesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
   '/library': typeof LibraryRoute
+  '/login': typeof LoginRoute
   '/practice': typeof PracticeRoute
+  '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/stories': typeof StoriesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/library' | '/practice' | '/settings' | '/stories'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/library'
+    | '/login'
+    | '/practice'
+    | '/queue'
+    | '/settings'
+    | '/stories'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/library' | '/practice' | '/settings' | '/stories'
-  id: '__root__' | '/' | '/library' | '/practice' | '/settings' | '/stories'
+  to:
+    | '/'
+    | '/admin'
+    | '/library'
+    | '/login'
+    | '/practice'
+    | '/queue'
+    | '/settings'
+    | '/stories'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/library'
+    | '/login'
+    | '/practice'
+    | '/queue'
+    | '/settings'
+    | '/stories'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
   LibraryRoute: typeof LibraryRoute
+  LoginRoute: typeof LoginRoute
   PracticeRoute: typeof PracticeRoute
+  QueueRoute: typeof QueueRoute
   SettingsRoute: typeof SettingsRoute
   StoriesRoute: typeof StoriesRoute
 }
@@ -88,6 +143,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/library': {
       id: '/library'
       path: '/library'
@@ -95,11 +157,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/practice': {
       id: '/practice'
       path: '/practice'
       fullPath: '/practice'
       preLoaderRoute: typeof PracticeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue': {
+      id: '/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof QueueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -121,8 +197,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
   LibraryRoute: LibraryRoute,
+  LoginRoute: LoginRoute,
   PracticeRoute: PracticeRoute,
+  QueueRoute: QueueRoute,
   SettingsRoute: SettingsRoute,
   StoriesRoute: StoriesRoute,
 }

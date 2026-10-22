@@ -1,38 +1,47 @@
-// A small SM-2 style scheduler. New/learning cards step through minutes before graduating to days;
-// review cards grow by their ease factor. Kept dependency-free so the browser can preview intervals too.
+// The review schedule. A new card is first drilled: every text (the phrase and each example) typed DRILL_TIMES
+// times, read aloud. Then it climbs a ladder of growing gaps, the forgetting curve's spacing (Leitner/Pimsleur-like):
+// each review moves it up or down depending on how well it was remembered. Dependency-free so the browser can show
+// the next intervals too.
 export type Rating = 'again' | 'hard' | 'good' | 'easy';
 export type CardState = 'new' | 'learning' | 'review';
-export type Schedule = { state: CardState; intervalDays: number; ease: number; reps: number; lapses: number };
-export type NextSchedule = Schedule & { dueAt: Date };
 
 export const ratings: Rating[] = ['again', 'hard', 'good', 'easy'];
 
-const MINUTE = 1 / (24 * 60);
-const MIN_EASE = 1.3;
-const MAX_INTERVAL = 365;
+// Typings of each text before a new card counts as learned.
+export const DRILL_TIMES = 10;
 
+const HOUR = 1 / 24;
+// Gaps in days after each step: 1 hour, 1 day, 3 days, a week, 2 weeks, a month, 2 months, then 4, 8 months, a year.
+export const LADDER = [HOUR, 1, 3, 7, 14, 30, 60, 120, 240, 365] as const;
+
+type Schedule = { state: CardState; step: number; reps: number; lapses: number };
+type NextSchedule = Schedule & { intervalDays: number; dueAt: Date };
+
+const at = (step: number, now: Date) => ({ intervalDays: LADDER[step], dueAt: new Date(now.getTime() + LADDER[step] * 86_400_000) });
+
+// The drill is done: first review an hour later.
+export function afterDrill(current: Pick<Schedule, 'reps' | 'lapses'>, now = new Date()): NextSchedule {
+  return { state: 'learning', step: 0, reps: current.reps + 1, lapses: current.lapses, ...at(0, now) };
+}
+
+// Didn't know: back to the first step (an hour). Unsure: the same gap again. Confident: one step up. Easy: two.
 export function nextSchedule(current: Schedule, rating: Rating, now = new Date()): NextSchedule {
-  let { state, intervalDays, ease, reps, lapses } = current;
-  reps += 1;
+  const top = LADDER.length - 1;
+  const step = rating === 'again' ? 0 : rating === 'hard' ? current.step : Math.min(top, current.step + (rating === 'easy' ? 2 : 1));
+  return {
+    state: step === 0 ? 'learning' : 'review',
+    step,
+    reps: current.reps + 1,
+    lapses: current.lapses + (rating === 'again' && current.step > 0 ? 1 : 0),
+    ...at(step, now),
+  };
+}
 
-  if (state !== 'review') {
-    const steps: Record<Rating, [CardState, number]> = {
-      again: ['learning', 1 * MINUTE], hard: ['learning', 10 * MINUTE], good: ['review', 1], easy: ['review', 4],
-    };
-    [state, intervalDays] = steps[rating];
-    if (rating === 'easy') ease += 0.15;
-  } else if (rating === 'again') {
-    state = 'learning'; intervalDays = 10 * MINUTE; lapses += 1; ease -= 0.2;
-  } else {
-    const factor = rating === 'hard' ? 1.2 : rating === 'good' ? ease : ease * 1.3;
-    const minimum = rating === 'hard' ? intervalDays : intervalDays + 1;
-    intervalDays = Math.min(MAX_INTERVAL, Math.max(minimum, intervalDays * factor));
-    if (rating === 'hard') ease -= 0.15;
-    if (rating === 'easy') ease += 0.15;
-  }
-
-  ease = Math.max(MIN_EASE, Math.round(ease * 100) / 100);
-  return { state, intervalDays, ease, reps, lapses, dueAt: new Date(now.getTime() + intervalDays * 86_400_000) };
+// The step whose gap is closest to (not above) a number of days, e.g. 30 → the month step.
+export function stepFor(days: number): number {
+  let step = 0;
+  LADDER.forEach((gap, index) => { if (gap <= days + 1e-9) step = index; });
+  return step;
 }
 
 export function formatInterval(days: number): string {

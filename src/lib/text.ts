@@ -3,8 +3,5 @@ export function normalizeText(text: string): string {
     .replace(/[^\p{L}\p{N}'\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// Vietnam has no daylight saving time, so the learner's day always starts at 00:00 UTC+7.
-export function startOfLearningDay(now = new Date()): string {
-  const offset = 7 * 3_600_000;
-  return new Date(Math.floor((now.getTime() + offset) / 86_400_000) * 86_400_000 - offset).toISOString();
-}
+// Story lines may carry ElevenLabs audio tags ("[laughs] No way."): heard, never shown, typed or read by Aura.
+export const withoutAudioTags = (text: string) => text.replace(/\[[a-z][a-z ]*\]/gi, '').replace(/\s+([.,!?;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();

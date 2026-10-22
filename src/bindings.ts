@@ -1,3 +1,3 @@
-// The ELEVENLABS_API_KEY secret is typed from .dev.vars.example by `pnpm cf-typegen`. It is an optional
-// fallback: a key set on the Settings page (D1) is used first.
+// The secrets (BETTER_AUTH_SECRET, SUPERADMIN_EMAIL, SUPERADMIN_PASSWORD) are typed from .dev.vars.example by
+// `pnpm cf-typegen`.
 export type Bindings = Cloudflare.Env;

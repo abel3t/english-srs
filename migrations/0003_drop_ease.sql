@@ -1,0 +1,1 @@
+ALTER TABLE `Cards` DROP COLUMN `ease`;

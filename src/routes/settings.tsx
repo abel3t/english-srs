@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { PageHeader } from '@/components/page-header';
 import { StatusMessage, type Status } from '@/components/status-message';
 import { Badge } from '@/components/ui/badge';
@@ -9,31 +9,33 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { getSettingsPage } from '@/data/cards';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
+import { authClient, unwrap } from '@/lib/auth-client';
 import type { KeyStatus, Provider } from '@/lib/settings';
 
 export const Route = createFileRoute('/settings')({
   loader: () => getSettingsPage(),
-  head: () => ({ meta: [{ title: 'Settings · English SRS' }] }),
+  head: () => ({ meta: [{ title: 'Settings · PhraseLoop' }] }),
   component: Settings,
 });
 
 const providerInfo: Record<Provider, { name: string; use: string; url: string }> = {
-  elevenlabs: { name: 'ElevenLabs', use: 'Story audio. Without a key (or when the month’s credits run out), stories use the free Aura-2 voice.', url: 'https://elevenlabs.io/app/settings/api-keys' },
+  elevenlabs: { name: 'ElevenLabs', use: 'Required to create story and conversation audio. When the month’s credits run out, stories use the free Aura-2 voice.', url: 'https://elevenlabs.io/app/settings/api-keys' },
 };
 
 function Settings() {
   const { keys, connectorCreatedAt } = Route.useLoaderData();
   return (
     <>
-      <PageHeader title="Settings" description="The connector for Claude or ChatGPT, and the voice for stories." />
+      <PageHeader title="Settings" description="Your connector for Claude or ChatGPT, the voice for your stories, and your password." />
       <Card>
         <CardHeader>
           <CardTitle>API key</CardTitle>
-          <CardDescription>A saved key is used instead of the Worker secret. It is never shown again, only its last 4 characters.</CardDescription>
+          <CardDescription>Your own key, used only for your stories. It is never shown again, only its last 4 characters.</CardDescription>
         </CardHeader>
         <CardContent className="divide-y">{keys.map(key => <ApiKeyRow key={key.provider} status={key} />)}</CardContent>
       </Card>
       <Connector createdAt={connectorCreatedAt} />
+      <ChangePassword />
     </>
   );
 }
@@ -62,16 +64,16 @@ function ApiKeyRow({ status: key }: { status: KeyStatus }) {
     <div className="grid gap-2 py-4 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center gap-2">
         <Label htmlFor={`key-${key.provider}`} className="font-semibold">{info.name}</Label>
-        {key.source
-          ? <Badge variant="secondary">{key.source === 'settings' ? 'Saved' : 'Worker secret'} · …{key.last4}</Badge>
+        {key.last4
+          ? <Badge variant="secondary">Saved · …{key.last4}</Badge>
           : <Badge variant="outline">Not set</Badge>}
         <a href={info.url} target="_blank" rel="noreferrer" className="ml-auto text-xs underline">Get a key</a>
       </div>
       <p className="text-xs text-muted-foreground">{info.use}</p>
       <form className="flex gap-2" onSubmit={event => { event.preventDefault(); void save('PUT'); }}>
-        <Input id={`key-${key.provider}`} type="password" autoComplete="off" value={value} onChange={event => setValue(event.target.value)} placeholder={key.source ? 'Paste a new key to replace it' : 'Paste your API key'} />
+        <Input id={`key-${key.provider}`} type="password" autoComplete="off" value={value} onChange={event => setValue(event.target.value)} placeholder={key.last4 ? 'Paste a new key to replace it' : 'Paste your API key'} />
         <Button type="submit" disabled={busy || value.trim().length < 8}>Save</Button>
-        {key.source === 'settings' && <Button type="button" variant="ghost" disabled={busy} onClick={() => save('DELETE')}>Remove</Button>}
+        {key.last4 && <Button type="button" variant="ghost" disabled={busy} onClick={() => save('DELETE')}>Remove</Button>}
       </form>
       <StatusMessage status={status} />
     </div>
@@ -105,7 +107,7 @@ function Connector({ createdAt }: { createdAt: string | null }) {
       <CardHeader>
         <CardTitle>Claude or ChatGPT</CardTitle>
         <CardDescription>
-          Your Claude or ChatGPT subscription is the app’s AI. Connect it, then ask: “Find 10 new phrases in my English app”, “Add <i>circle back</i> to my English app” or “Write me a story with my phrases”. New cards wait on Today, where you choose Learn it or Skip.
+          Your Claude or ChatGPT subscription is the app’s AI. Connect it, then ask: “Find 10 new phrases in PhraseLoop”, “Add <i>circle back</i> to PhraseLoop” or “Write me a story with my phrases”. New cards wait in the Queue for your review.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3">
@@ -129,6 +131,42 @@ function Connector({ createdAt }: { createdAt: string | null }) {
           <li><b>Claude</b>: Settings → Connectors → Add custom connector → paste the link (no sign-in needed).</li>
           <li><b>ChatGPT</b>: Settings → Apps &amp; Connectors → Advanced → turn on Developer mode → Create → paste the link, Authentication: none. On some plans ChatGPT can only read, not save cards.</li>
         </ul>
+        <StatusMessage status={status} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// Signs out the account's other devices too, so a password given by the superadmin can be replaced safely.
+function ChangePassword() {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status>(null);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setStatus(null);
+    try {
+      await unwrap(authClient.changePassword({ currentPassword: current, newPassword: next, revokeOtherSessions: true }));
+      setCurrent(''); setNext('');
+      setStatus({ type: 'success', text: 'Password changed. Your other devices are signed out.' });
+    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Card className="mt-4">
+      <CardHeader>
+        <CardTitle>Password</CardTitle>
+        <CardDescription>At least 8 characters.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <div className="grid gap-1.5"><Label htmlFor="current-password">Current password</Label><Input id="current-password" type="password" autoComplete="current-password" required value={current} onChange={event => setCurrent(event.target.value)} /></div>
+          <div className="grid gap-1.5"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" autoComplete="new-password" required minLength={8} value={next} onChange={event => setNext(event.target.value)} /></div>
+          <Button type="submit" disabled={busy}>Change</Button>
+        </form>
         <StatusMessage status={status} />
       </CardContent>
     </Card>
