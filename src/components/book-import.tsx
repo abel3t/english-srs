@@ -5,10 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
 import { chunkChapter, parseBook, type ParsedBook } from '@/lib/book-parser';
 
 type Progress = { label: string; done: number; total: number };
+// `chapter` is the index in the chosen chapters (titles can repeat); it is not sent to the server.
+type Part = { chapter: number; position: number; chapterTitle: string; text: string; words: number };
 
 // Short parts, so Claude or ChatGPT can be given just enough text for the number of phrases asked for.
 const PART_WORDS = 250;
@@ -29,6 +32,9 @@ function BookImport({ close }: { close: () => void }) {
   const [book, setBook] = useState<ParsedBook | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [progress, setProgress] = useState<Progress | null>(null);
+  // The exact text that will be saved (and that Claude or ChatGPT will read), shown before saving.
+  const [preview, setPreview] = useState<Part[] | null>(null);
+  const [shown, setShown] = useState('');
   const [summary, setSummary] = useState<{ parts: number; words: number } | null>(null);
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState<Status>(null);
@@ -37,7 +43,7 @@ function BookImport({ close }: { close: () => void }) {
 
   async function open(file: File | undefined) {
     if (!file) return;
-    setBook(null); setProgress(null); setSummary(null); setStatus({ type: 'info', text: `Reading ${file.name} in your browser…` });
+    setBook(null); setPreview(null); setProgress(null); setSummary(null); setStatus({ type: 'info', text: `Reading ${file.name} in your browser…` });
     try {
       const parsed = await parseBook(file);
       if (!parsed.chapters.length) throw new Error('No readable text was found. Scanned PDFs (images of pages) are not supported.');
@@ -51,13 +57,18 @@ function BookImport({ close }: { close: () => void }) {
     setSelected(current => { const next = new Set(current); if (next.has(index)) next.delete(index); else next.add(index); return next; });
   }
 
+  function showPreview() {
+    const parts = chosen.flatMap((chapter, index) => chunkChapter(chapter.text, PART_WORDS).map(text => ({ chapter: index, chapterTitle: chapter.title, text, words: text.split(/\s+/).filter(Boolean).length })))
+      .map((part, position) => ({ ...part, position }));
+    if (!parts.length) { setStatus({ type: 'error', text: 'These chapters have no prose to read.' }); return; }
+    setStatus(null); setPreview(parts); setShown(String(parts[0].chapter));
+  }
+
   async function save() {
-    if (!book || !chosen.length) return;
+    if (!book || !preview) return;
+    const parts = preview.map(({ chapter: _chapter, ...part }) => part);
     setRunning(true); setStatus(null); setSummary(null);
     try {
-      const parts = chosen.flatMap(chapter => chunkChapter(chapter.text, PART_WORDS).map(text => ({ chapterTitle: chapter.title, text, words: text.split(/\s+/).filter(Boolean).length })))
-        .map((part, position) => ({ ...part, position }));
-      if (!parts.length) throw new Error('These chapters have no prose to read.');
       const { bookId } = await postJson<{ bookId: number }>('/api/books', { title: book.title, author: book.author ?? undefined, format: book.format });
       try {
         for (let start = 0; start < parts.length; start += 20) {
@@ -82,7 +93,40 @@ function BookImport({ close }: { close: () => void }) {
         <DialogDescription>PDF or EPUB. The text is kept privately; Claude or ChatGPT reads it in order, a little at a time, when you ask for new phrases.</DialogDescription>
       </DialogHeader>
 
-      {!summary && (
+      {preview && !summary && (
+        <div className="grid gap-3 text-sm">
+          <p>
+            <span className="font-medium">{preview.reduce((total, part) => total + part.words, 0).toLocaleString()} words</span>
+            <span className="text-muted-foreground"> from {new Set(preview.map(part => part.chapter)).size} of {chosen.length} chapters. Check that the text reads correctly: this is exactly what will be saved and what Claude or ChatGPT will read. Code, tables, captions and headings are left out.</span>
+          </p>
+          {chosen.some((_, index) => !preview.some(part => part.chapter === index)) && (
+            <p className="text-amber-800">No readable prose in: {chosen.filter((_, index) => !preview.some(part => part.chapter === index)).map(chapter => chapter.title).join(', ')}</p>
+          )}
+          <Select value={shown} onValueChange={setShown}>
+            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[...new Set(preview.map(part => part.chapter))].map(index => (
+                <SelectItem key={index} value={String(index)}>{chosen[index].title} · {preview.filter(part => part.chapter === index).reduce((total, part) => total + part.words, 0).toLocaleString()} words</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="max-h-96 overflow-y-auto rounded-lg border bg-muted/30 p-3 leading-relaxed whitespace-pre-wrap">
+            {preview.filter(part => String(part.chapter) === shown).map(part => part.text).join('\n\n')}
+          </div>
+          {progress && (
+            <div className="grid gap-1">
+              <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} /></div>
+              <p className="text-xs text-muted-foreground">{progress.label}: {progress.done}/{progress.total}</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="secondary" disabled={running} onClick={() => setPreview(null)}>Back</Button>
+            <Button disabled={running} onClick={save}>{running ? 'Saving…' : 'Looks good: save'}</Button>
+          </DialogFooter>
+        </div>
+      )}
+
+      {!preview && !summary && (
         <div className="grid gap-3">
           <Input type="file" accept=".pdf,.epub,application/pdf,application/epub+zip" disabled={running} onChange={event => open(event.target.files?.[0])} className="h-10 bg-background" />
           {!book && <p className="text-xs text-muted-foreground">Text-based PDFs only (not scanned images).</p>}
@@ -106,14 +150,8 @@ function BookImport({ close }: { close: () => void }) {
                   </li>
                 ))}
               </ul>
-              {progress && (
-                <div className="grid gap-1">
-                  <div className="h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }} /></div>
-                  <p className="text-xs text-muted-foreground">{progress.label}: {progress.done}/{progress.total}</p>
-                </div>
-              )}
               <DialogFooter>
-                <Button disabled={running || !chosen.length} onClick={save}>{running ? 'Saving…' : `Import ${selected.size} chapters`}</Button>
+                <Button disabled={!chosen.length} onClick={showPreview}>Preview text of {selected.size} chapters</Button>
               </DialogFooter>
             </>
           )}
