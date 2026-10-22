@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export const clipUrl = (text: string) => `/api/audio?text=${encodeURIComponent(text.replace(/\s+/g, ' ').trim())}`;
+const clipUrl = (text: string) => `/api/audio?text=${encodeURIComponent(text.replace(/\s+/g, ' ').trim())}`;
 
 function speakWithBrowser(text: string, rate: number) {
   if (typeof speechSynthesis === 'undefined') return;

@@ -106,7 +106,6 @@ pnpm run deploy
 
 ```bash
 pnpm build                          # vite build + tsc --noEmit
-pnpm eval:phrases                   # phrase finder recall/precision on eval/phrases
 pnpm exec wrangler deploy --dry-run # validate the generated Worker config without uploading
 ```
 
@@ -145,40 +144,9 @@ https://YOUR-WORKER.workers.dev/
 | `/api/stories` | GET | Stories to pick from when starting practice |
 | `/api/stories/:id/audio` | GET | Saved speech for a story |
 | `/api/stories/:id` | DELETE | Delete a story and its audio |
-| `/api/stats` | GET | Today's added/typed/due counts |
-| `/api/settings` | GET | Which API keys are set (last 4 characters only) |
 | `/api/settings/keys/elevenlabs` | PUT, DELETE | Save or remove the ElevenLabs key |
 | `/api/settings/connector` | POST, DELETE | Create (returned once) or remove the connector link |
 | `/mcp/<token>` | POST | MCP tools: `get_reading`, `save_cards`, `list_cards`, `save_story` |
-
-## Phrase finder (not used by the app)
-
-The app no longer runs it: Claude or ChatGPT reads the text instead. It is kept with its data and evaluation in case code ranking is wanted again (for example to give the connector hints). `src/lib/phrase-finder.ts` ran in a Web Worker on the Import page. It first finds candidates broadly, then filters and ranks them:
-
-1. **Dictionary** — ~16,000 Wiktionary phrasal verbs, idioms and prepositional phrases plus hand-written workplace/interview frames, matched on lemmas ([compromise](https://github.com/spencermountain/compromise)), with slots (“loop *someone* in”) and separable verbs (“figure *it* out”, “take *X* into account”; never two-word verb + preposition like “build … on”).
-2. **Reference phrases** — any 2–4-word stretch that is a strongly associated phrase in 50M words of reference English (fair normalized PMI), so fixed phrases no dictionary lists are found too (“in the context of”, “a large amount of”, “side effect”).
-3. **Patterns** — light verb + noun (“take place”), adjective + dependent preposition (“resilient to”), intensifier + adjective (“loosely coupled”), complex prepositions (“in the case of”), statistically associated verb + noun pairs, linking words, and advanced single words.
-4. **Filters and ranking** — very common spoken phrases are basic for B1 and skipped; names (capitalized mid-sentence), book topic terms (far more frequent than in general English) and bursty Wikipedia vocabulary (“cache”) are pushed down; dictionary entries never seen in the reference are usually literal and pushed down. Score = type + frequency + spread across chapters + difficulty + reference usefulness/fixedness, plus the most dictionary-like example sentence.
-
-### Measuring it
-
-`pnpm eval:phrases [--details] [--no-reference]` scores the finder against hand-annotated chapters in `eval/phrases/` (CC BY 3.0 texts from *The Architecture of Open Source Applications*):
-
-| | Held-out chapter (annotated blind) | | Tuning chapters (×3) | |
-|---|---|---|---|---|
-| | recall | precision@50 | recall | precision@50 |
-| Original finder | 20% | 64% | 27% | 57% |
-| Current finder | **52%** | **70%** | 74% | 79% |
-
-Recall on the tuning chapters is optimistic (its gold set was grown from judged finder output); the held-out chapter is the honest number. Add your own chapters (`*.txt` plus a `gold.json` entry; set `"blind": true` if you annotate before running) to measure on your reading.
-
-### Data
-
-`public/data/` is generated, not hand-edited:
-
-- `expressions.json` — `scripts/build-phrase-data.mjs`; titles from Wiktionary categories, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), filtered and normalized.
-- `word-freq.txt` — Zipf frequencies of the top 40,000 English words from [wordfreq](https://github.com/rspeer/wordfreq) (data CC BY-SA 4.0).
-- `reference-ngrams.tsv`, `reference-words.tsv` — `scripts/build-reference-ngrams.py`; aggregate counts only (no text) from 25M words of OpenSubtitles 2018 via [OPUS](https://opus.nlpl.eu/OpenSubtitles.php) (P. Lison and J. Tiedemann, 2016) and 25M words of [WikiText-103](https://blog.salesforceairesearch.com/the-wikitext-long-term-dependency-language-modeling-dataset/) (CC BY-SA).
 
 ## D1 backups
 

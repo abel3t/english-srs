@@ -114,27 +114,16 @@ export async function reviewCard(db: D1Database, card: Card, rating: Rating, rev
   return updated;
 }
 
-export type DailyStats = { added: number; reviewed: number; due: number };
+export type Overview = { reviewed: number; due: number; total: number; mature: number };
 
-export async function getDailyStats(db: D1Database): Promise<DailyStats> {
-  const since = startOfLearningDay();
-  const row = await db.prepare(`
-    SELECT
-      (SELECT COUNT(*) FROM cards WHERE created_at >= ?1) AS added,
-      (SELECT COUNT(*) FROM reviews WHERE reviewed_at >= ?1) AS reviewed,
-      (SELECT COUNT(*) FROM cards WHERE due_at <= ?2) AS due
-  `).bind(since, new Date().toISOString()).first<DailyStats>();
-  return { added: row?.added ?? 0, reviewed: row?.reviewed ?? 0, due: row?.due ?? 0 };
-}
-
-export type Overview = DailyStats & { total: number; mature: number; candidates: number };
-
+// The Today page's numbers: typed today, due now, all cards, memorized cards.
 export async function getOverview(db: D1Database): Promise<Overview> {
   const row = await db.prepare(`
     SELECT
+      (SELECT COUNT(*) FROM reviews WHERE reviewed_at >= ?1) AS reviewed,
+      (SELECT COUNT(*) FROM cards WHERE due_at <= ?2) AS due,
       (SELECT COUNT(*) FROM cards) AS total,
-      (SELECT COUNT(*) FROM cards WHERE interval_days >= 21) AS mature,
-      (SELECT COUNT(*) FROM candidates WHERE status = 'pending' AND draft IS NOT NULL) AS candidates
-  `).first<Omit<Overview, keyof DailyStats>>();
-  return { ...await getDailyStats(db), total: row?.total ?? 0, mature: row?.mature ?? 0, candidates: row?.candidates ?? 0 };
+      (SELECT COUNT(*) FROM cards WHERE interval_days >= ?3) AS mature
+  `).bind(startOfLearningDay(), new Date().toISOString(), MEMORIZED_DAYS).first<Overview>();
+  return { reviewed: row?.reviewed ?? 0, due: row?.due ?? 0, total: row?.total ?? 0, mature: row?.mature ?? 0 };
 }

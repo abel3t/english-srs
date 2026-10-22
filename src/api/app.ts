@@ -5,10 +5,10 @@ import type { Bindings } from '../bindings';
 import { MAX_CLIP_CHARS } from '../constants';
 import { addParts, createBook, deleteBook } from '../lib/books-db';
 import { setCandidateStatus } from '../lib/candidates-db';
-import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
+import { deleteCard, getCard, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
 import { getClip, normalizeClipText } from '../lib/clips';
 import { formatInterval, nextSchedule, ratings } from '../lib/srs';
-import { connectorCreatedAt, createConnectorToken, getKeyStatuses, isConnectorToken, providers, removeConnectorToken, setApiKey } from '../lib/settings';
+import { createConnectorToken, getKeyStatuses, isConnectorToken, providers, removeConnectorToken, setApiKey } from '../lib/settings';
 import { deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
 import { handleMcp } from './mcp';
 
@@ -62,7 +62,6 @@ const audioResponse = (audio: { body: ReadableStream | Uint8Array<ArrayBuffer>; 
   new Response(audio.body, { headers: { 'Content-Type': audio.contentType, 'Cache-Control': 'private, max-age=31536000, immutable' } });
 
 api.get('/health', c => c.json({ service: 'English SRS', status: 'running', runtime: 'cloudflare-workers', timestamp: new Date().toISOString() }));
-api.get('/api/stats', async c => c.json(await getDailyStats(c.env.DB)));
 
 // The learner chose "Learn it" for a card written through the connector — store it in the review schedule.
 api.post('/api/cards', async c => {
@@ -73,7 +72,7 @@ api.post('/api/cards', async c => {
     model: 'connector', promptVersion: 'connector-v2',
   });
   if (input.candidateId) await setCandidateStatus(c.env.DB, input.candidateId, 'learned');
-  return c.json({ card, stats: await getDailyStats(c.env.DB) }, 201);
+  return c.json({ card }, 201);
 });
 
 api.delete('/api/cards/:id', async c => {
@@ -93,7 +92,7 @@ api.post('/api/practice/answer', async c => {
   const card = await getCard(c.env.DB, input.cardId);
   if (!card) throw new ApiError(404, 'Not found', 'Card was not found.');
   const updated = await reviewCard(c.env.DB, card, input.rating, { durationMs: input.durationMs, mode: 'typing', accuracy: input.accuracy });
-  return c.json({ card: updated, stats: await getDailyStats(c.env.DB) });
+  return c.json({ card: updated });
 });
 
 // A book is stored as short text parts so Claude or ChatGPT can read just enough of it at a time (connector).
@@ -143,8 +142,6 @@ const providerParam = (value: string) => {
   if (!provider) throw new ApiError(404, 'Not found', 'Unknown provider.');
   return provider;
 };
-
-api.get('/api/settings', async c => c.json({ keys: await getKeyStatuses(c.env), connectorCreatedAt: await connectorCreatedAt(c.env.DB) }));
 
 api.put('/api/settings/keys/:provider', async c => {
   await setApiKey(c.env.DB, providerParam(c.req.param('provider')), keySchema.parse(await c.req.json()).key);
