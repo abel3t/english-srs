@@ -1,5 +1,5 @@
-// Browser-only: turns a PDF or EPUB into chapters of plain text. Nothing here is uploaded or stored;
-// the import page sends small chunks of the selected chapters to the phrase extractor and discards the rest.
+// Browser-only: turns a PDF or EPUB into chapters of plain text. The import dialog then saves the prose of the
+// chosen chapters as short parts, which Claude or ChatGPT reads through the connector.
 export type Chapter = { title: string; text: string; words: number };
 export type ParsedBook = { title: string; author: string | null; format: 'pdf' | 'epub'; chapters: Chapter[] };
 
@@ -45,10 +45,10 @@ async function parsePdf(data: Uint8Array, fallbackTitle: string): Promise<Parsed
   const info = (await doc.getMetadata().catch(() => null))?.info as { Title?: string; Author?: string } | undefined;
   const starts = await outlineStarts(doc);
   const chapters = starts.length
-    ? starts.map((start, index) => chapter(start.title, pages.slice(start.page, starts[index + 1]?.page ?? pages.length).flat()))
+    ? starts.map((start, index) => chapter(start.title, joinPages(pages.slice(start.page, starts[index + 1]?.page ?? pages.length))))
     : Array.from({ length: Math.ceil(pages.length / 10) }, (_, index) =>
-      chapter(`Pages ${index * 10 + 1}–${Math.min(pages.length, index * 10 + 10)}`, pages.slice(index * 10, index * 10 + 10).flat()));
-  if (starts.length && starts[0].page > 0) chapters.unshift(chapter('Front matter', pages.slice(0, starts[0].page).flat()));
+      chapter(`Pages ${index * 10 + 1}–${Math.min(pages.length, index * 10 + 10)}`, joinPages(pages.slice(index * 10, index * 10 + 10))));
+  if (starts.length && starts[0].page > 0) chapters.unshift(chapter('Front matter', joinPages(pages.slice(0, starts[0].page))));
 
   return { title: clean(info?.Title ?? '') || fallbackTitle, author: clean(info?.Author ?? '') || null, format: 'pdf', chapters: chapters.filter(item => item.words >= 50) };
 }
@@ -80,8 +80,27 @@ function removeRunningHeaders(pages: string[][]): string[][] {
   const threshold = Math.max(3, pages.length * 0.2);
   return pages.map(lines => lines.filter((line, index) => {
     const edge = index < 2 || index >= lines.length - 2;
-    return !/^\d+$/.test(line) && !(edge && (counts.get(key(line)) ?? 0) >= threshold);
+    return !(edge && (/^\d+$/.test(line) || (counts.get(key(line)) ?? 0) >= threshold));
   }));
+}
+
+const ENDS_SENTENCE = /[.!?:"”’)]$/;
+// A word broken at the end of a line ("main-" + "tain") is joined without the hyphen.
+const joinBroken = (before: string, after: string) => (before.endsWith('-') && /^[a-z]/.test(after) ? before.slice(0, -1) + after : `${before} ${after}`);
+
+// A paragraph that runs over a page break continues on the next page: join the two halves.
+function joinPages(pages: string[][]): string[] {
+  const paragraphs: string[] = [];
+  for (const page of pages) {
+    for (const [index, paragraph] of page.entries()) {
+      const last = paragraphs.at(-1);
+      // Only when the sentence clearly goes on, so a heading is never glued to the text after it.
+      const continues = last && !ENDS_SENTENCE.test(last) && (/^[a-z]/.test(paragraph) || /[,;\-–—]$/.test(last));
+      if (index === 0 && continues) paragraphs[paragraphs.length - 1] = joinBroken(last, paragraph);
+      else paragraphs.push(paragraph);
+    }
+  }
+  return paragraphs;
 }
 
 // PDFs only have lines; a short line ending a sentence (or an empty line) usually ends a paragraph.
@@ -92,8 +111,8 @@ function linesToParagraphs(lines: string[]): string[] {
   let current = '';
   for (const line of lines) {
     if (!line) { if (current) paragraphs.push(current); current = ''; continue; }
-    current = !current ? line : current.endsWith('-') && /^[a-z]/.test(line) ? current.slice(0, -1) + line : `${current} ${line}`;
-    if (/[.!?:"”)]$/.test(line) && line.length < typical * 0.85) { paragraphs.push(current); current = ''; }
+    current = !current ? line : joinBroken(current, line);
+    if (ENDS_SENTENCE.test(line) && line.length < typical * 0.85) { paragraphs.push(current); current = ''; }
   }
   if (current) paragraphs.push(current);
   return paragraphs.map(clean);
@@ -101,7 +120,8 @@ function linesToParagraphs(lines: string[]): string[] {
 
 // ---------- EPUB ----------
 
-const BLOCKS = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt';
+// Leaf blocks only; 'div' covers books whose paragraphs are <div>s (common in converted EPUBs).
+const BLOCKS = 'p, div, h1, h2, h3, h4, h5, h6, li, blockquote, dd, dt';
 
 function parseMarkup(text: string, type: DOMParserSupportedType): Document {
   const doc = new DOMParser().parseFromString(text, type);
@@ -123,6 +143,10 @@ async function parseEpub(data: Uint8Array, fallbackTitle: string): Promise<Parse
   const { unzipSync, strFromU8 } = await import('fflate');
   const files = unzipSync(data);
   const read = (path: string) => (files[path] ? strFromU8(files[path]) : null);
+
+  // Font obfuscation also uses encryption.xml; only encrypted text files mean DRM.
+  const encryption = read('META-INF/encryption.xml');
+  if (encryption && /URI=["'][^"']+\.x?html?["']/i.test(encryption)) throw new Error('This EPUB is DRM-protected, so its text cannot be read. Use a DRM-free copy.');
 
   const container = read('META-INF/container.xml');
   const opfPath = container && parseMarkup(container, 'application/xml').getElementsByTagNameNS('*', 'rootfile')[0]?.getAttribute('full-path');
@@ -179,12 +203,15 @@ function readTocTitles(manifest: Map<string, { path: string; type: string; prope
   return titles;
 }
 
-// ---------- Chunking for phrase extraction ----------
+// ---------- Splitting into parts ----------
 
-// Code listings, tables and captions add noise and cost; prose paragraphs are what carry learnable English.
+// Code listings, tables, captions and headings add noise; prose carries learnable English. Short lines are kept
+// when they end like a sentence, so dialogue (“Wait, really?”) stays.
 const looksLikeProse = (paragraph: string) => {
   const symbols = (paragraph.match(/[{}()[\];=<>$#\\|_*/]/g) ?? []).length;
-  return wordCount(paragraph) >= 6 && /[a-z]/.test(paragraph) && symbols / paragraph.length < 0.05;
+  const caption = /^(figure|fig\.|table|listing|example)\s*[\d.:]/i.test(paragraph);
+  const sentence = wordCount(paragraph) >= 6 || (wordCount(paragraph) >= 2 && ENDS_SENTENCE.test(paragraph));
+  return sentence && !caption && /[a-z]/.test(paragraph) && symbols / paragraph.length < 0.05;
 };
 
 export function chunkChapter(text: string, maxWords = 1000): string[] {
@@ -193,11 +220,16 @@ export function chunkChapter(text: string, maxWords = 1000): string[] {
   let words = 0;
   const flush = () => { if (current.length) chunks.push(current.join('\n\n')); current = []; words = 0; };
   for (const paragraph of text.split('\n\n').filter(looksLikeProse)) {
-    const pieces = wordCount(paragraph) > maxWords ? paragraph.match(/[^.!?]+[.!?]+["”)]?\s*/g) ?? [paragraph] : [paragraph];
+    // A paragraph longer than a part is split between sentences (text after the last full stop is kept);
+    // sentences of one paragraph stay on one line.
+    const pieces = wordCount(paragraph) > maxWords ? paragraph.split(/(?<=[.!?]["”’)]*)\s+/) : [paragraph];
+    let continuing = false;
     for (const piece of pieces) {
       const count = wordCount(piece);
-      if (words + count > maxWords) flush();
-      current.push(piece.trim()); words += count;
+      if (words + count > maxWords && words) { flush(); continuing = false; }
+      if (continuing) current[current.length - 1] += ` ${piece.trim()}`;
+      else current.push(piece.trim());
+      words += count; continuing = true;
     }
   }
   flush();

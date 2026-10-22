@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { errorMessage, postJson } from '@/lib/api-client';
+import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
 import { chunkChapter, parseBook, type ParsedBook } from '@/lib/book-parser';
 
 type Progress = { label: string; done: number; total: number };
@@ -59,13 +59,19 @@ function BookImport({ close }: { close: () => void }) {
         .map((part, position) => ({ ...part, position }));
       if (!parts.length) throw new Error('These chapters have no prose to read.');
       const { bookId } = await postJson<{ bookId: number }>('/api/books', { title: book.title, author: book.author ?? undefined, format: book.format });
-      for (let start = 0; start < parts.length; start += 20) {
-        setProgress({ label: 'Saving the text', done: start, total: parts.length });
-        await postJson(`/api/books/${bookId}/parts`, { parts: parts.slice(start, start + 20) });
+      try {
+        for (let start = 0; start < parts.length; start += 20) {
+          setProgress({ label: 'Saving the text', done: start, total: parts.length });
+          await postJson(`/api/books/${bookId}/parts`, { parts: parts.slice(start, start + 20) });
+        }
+      } catch (error) {
+        // Never keep half a book: remove it so importing again starts clean.
+        await apiRequest(`/api/books/${bookId}`, { method: 'DELETE' }).catch(() => undefined);
+        throw error;
       }
       setSummary({ parts: parts.length, words: parts.reduce((total, part) => total + part.words, 0) });
       setProgress(null);
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    } catch (error) { setStatus({ type: 'error', text: `${errorMessage(error)} Nothing was saved; please try again.` }); setProgress(null); }
     finally { setRunning(false); await router.invalidate(); }
   }
 
