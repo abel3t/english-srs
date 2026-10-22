@@ -16,8 +16,8 @@ export async function saveStory(db: D1Database, story: { kind: StoryKind; title:
   const speakers: string[] = CONVERSATION_SPEAKERS.map(speaker => speaker.name);
   const lines = story.lines.map(line => ({ speaker: story.kind === 'conversation' ? line.speaker : null, text: line.text.trim() }));
   if (story.kind === 'conversation' && lines.some(line => !speakers.includes(line.speaker ?? ''))) throw new Error(`Every line of a conversation needs a speaker: ${speakers.join(' or ')}.`);
-  const row = await db.prepare('INSERT INTO stories (kind, title, lines, phrases, model, created_at) VALUES (?1,?2,?3,?4,?5,?6) RETURNING *')
-    .bind(story.kind, story.title.trim(), JSON.stringify(lines), JSON.stringify(story.phrases), 'connector', new Date().toISOString())
+  const row = await db.prepare('INSERT INTO stories (kind, title, lines, phrases, created_at) VALUES (?1,?2,?3,?4,?5) RETURNING *')
+    .bind(story.kind, story.title.trim(), JSON.stringify(lines), JSON.stringify(story.phrases), new Date().toISOString())
     .first<StoryRow>();
   if (!row) throw new Error('D1 did not return the new story');
   return fromRow(row);

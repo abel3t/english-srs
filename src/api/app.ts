@@ -34,7 +34,7 @@ const idParam = (value: string) => {
 const examplesSchema = z.array(z.string().trim().min(1).max(400)).max(6).default([]);
 const cardSchema = z.object({
   phrase: z.string().trim().min(1).max(1000), explanation: z.string().trim().min(1).max(6000),
-  keyExpression: z.string().trim().max(300).default(''), grammarPattern: z.string().trim().max(300).default(''),
+  keyExpression: z.string().trim().max(300).default(''),
   examples: examplesSchema, originalInput: z.string().trim().max(3000).optional(), context: z.string().trim().max(1500).optional(),
   candidateId: z.number().int().positive().optional(),
 });
@@ -84,9 +84,8 @@ api.get('/health', c => c.json({ service: 'English SRS', status: 'running', runt
 api.post('/api/cards', async c => {
   const input = cardSchema.parse(await c.req.json());
   const card = await insertCard(c.env.DB, {
-    phrase: input.phrase, explanation: input.explanation, keyExpression: input.keyExpression, grammarPattern: input.grammarPattern,
+    phrase: input.phrase, explanation: input.explanation, keyExpression: input.keyExpression,
     examples: input.examples, originalInput: input.originalInput || null, context: input.context || null,
-    model: 'connector', promptVersion: 'connector-v2',
   });
   if (input.candidateId) await setCandidateStatus(c.env.DB, input.candidateId, 'learned');
   return c.json({ card }, 201);
@@ -108,7 +107,7 @@ api.post('/api/practice/answer', async c => {
   const input = answerSchema.parse(await c.req.json());
   const card = await getCard(c.env.DB, input.cardId);
   if (!card) throw new ApiError(404, 'Not found', 'Card was not found.');
-  const updated = await reviewCard(c.env.DB, card, input.rating, { durationMs: input.durationMs, mode: 'typing', accuracy: input.accuracy });
+  const updated = await reviewCard(c.env.DB, card, input.rating, { durationMs: input.durationMs, accuracy: input.accuracy });
   return c.json({ card: updated });
 });
 
