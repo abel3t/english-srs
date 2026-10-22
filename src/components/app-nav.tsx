@@ -5,6 +5,7 @@ const navItems = [
   { to: '/practice', label: 'Practice' },
   { to: '/stories', label: 'Stories' },
   { to: '/library', label: 'Library' },
+  { to: '/settings', label: 'Settings' },
 ] as const;
 
 export function AppNav() {

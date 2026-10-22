@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { listBooks } from '@/lib/books-db';
 import { countPending, getCandidate, getSuggestions } from '@/lib/candidates-db';
 import { getOverview, getUnmemorizedCards, listCards } from '@/lib/cards-db';
+import { connectorCreatedAt, getKeyStatuses } from '@/lib/settings';
 import { getStory, listStories } from '@/lib/stories';
 
 export const cardsSearchSchema = z.object({
@@ -42,3 +43,8 @@ export const getStoryById = createServerFn()
     if (!story) throw notFound();
     return story;
   });
+
+export const getSettingsPage = createServerFn().handler(async () => ({
+  keys: await getKeyStatuses(env),
+  connectorCreatedAt: await connectorCreatedAt(env.DB),
+}));

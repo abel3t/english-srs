@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { errorMessage, postJson } from '@/lib/api-client';
 import type { Candidate } from '@/lib/candidates-db';
-import type { CardReview } from '@/lib/card-review';
 import type { Analysis } from '@/lib/learning-analysis';
 
 const wordCount = (value: string) => value.trim().split(/\s+/).filter(Boolean).length;
@@ -19,8 +18,9 @@ const plain = (markdown: string) => markdown.replace(/\*\*([^*]+)\*\*/g, '$1');
 type Draft = { phrase: string; explanation: string; examples: string };
 
 /**
- * Learn a phrase in a dialog: Ollama (free) previews it; Gemini is asked only if the learner still wants it;
- * only "Learn it" stores the card. `candidate` pre-fills a suggestion from a book (null = type your own).
+ * Learn a phrase in a dialog. A suggestion that already has a card written through the connector (Claude or
+ * ChatGPT) opens it directly; otherwise Ollama (free) previews it. Only "Learn it" stores the card.
+ * `candidate` pre-fills a suggestion from a book (null = type your own).
  */
 export function LearnDialog({ candidate, open, onOpenChange }: { candidate: Candidate | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
@@ -39,14 +39,14 @@ function LearnFlow({ candidate, close }: { candidate: Candidate | null; close: (
     context: candidate?.source ? `From "${candidate.source}"` : '',
     confusingPart: candidate?.example ? candidate.phrase : '',
   }));
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [review, setReview] = useState<CardReview | null>(null);
-  const [draft, setDraft] = useState<Draft>({ phrase: '', explanation: '', examples: '' });
-  const [busy, setBusy] = useState<'preview' | 'review' | 'save' | 'skip' | null>(null);
+  const ready = candidate?.draft ?? null;
+  const [analysis, setAnalysis] = useState<Analysis | null>(ready);
+  const [draft, setDraft] = useState<Draft>(() => ready ? { phrase: ready.mainSentence, explanation: ready.explanation, examples: ready.examples.join('\n') } : { phrase: '', explanation: '', examples: '' });
+  const [busy, setBusy] = useState<'preview' | 'save' | 'skip' | null>(null);
   const [status, setStatus] = useState<Status>(null);
 
   async function preview(event?: FormEvent) {
-    event?.preventDefault(); setStatus(null); setAnalysis(null); setReview(null); setBusy('preview');
+    event?.preventDefault(); setStatus(null); setAnalysis(null); setBusy('preview');
     try {
       const body = await postJson<{ analysis: Analysis }>('/api/analyze', { text: form.text.trim(), context: optional(form.context), confusingPart: optional(form.confusingPart) });
       setAnalysis(body.analysis);
@@ -55,26 +55,8 @@ function LearnFlow({ candidate, close }: { candidate: Candidate | null; close: (
     finally { setBusy(null); }
   }
 
-  // A suggestion already has its text, so preview it straight away.
-  useEffect(() => { if (candidate) void preview(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function askGemini() {
-    if (!analysis) return;
-    setStatus(null); setBusy('review');
-    try {
-      const body = await postJson<{ review: CardReview }>('/api/analyze/review', {
-        text: form.text.trim(), context: optional(form.context), mainSentence: draft.phrase, meaning: analysis.meaning,
-        keyExpression: analysis.keyExpression, explanation: draft.explanation, examples: draft.examples.split('\n').filter(line => line.trim()), score: analysis.score,
-      });
-      setReview(body.review);
-      setDraft(current => ({
-        ...current,
-        explanation: body.review.correctedMeaning ? current.explanation.replace(/\*\*Meaning\*\*\n[^\n]*/, `**Meaning**\n${body.review.correctedMeaning}`) : current.explanation,
-        examples: body.review.examples.length ? body.review.examples.join('\n') : current.examples,
-      }));
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
-    finally { setBusy(null); }
-  }
+  // A suggestion already has its text, so preview it straight away (unless its card is already written).
+  useEffect(() => { if (candidate && !ready) void preview(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function skip() {
     if (!candidate) { close(); return; }
@@ -102,7 +84,7 @@ function LearnFlow({ candidate, close }: { candidate: Candidate | null; close: (
     <>
       <DialogHeader>
         <DialogTitle>{candidate ? candidate.phrase : 'Learn a phrase'}</DialogTitle>
-        <DialogDescription>Preview it (free), ask Gemini to check it if you still want it, then save it to practice.</DialogDescription>
+        <DialogDescription>Check the card, edit it if you like, then save it to practice.</DialogDescription>
       </DialogHeader>
 
       {!analysis && (
@@ -129,14 +111,12 @@ function LearnFlow({ candidate, close }: { candidate: Candidate | null; close: (
       {analysis && (
         <div className="grid gap-4">
           <div className="grid gap-1">
-            <p className="text-xs text-muted-foreground">Step {review ? 2 : 1} of 2 · {review ? 'checked by Gemini' : 'preview by Ollama'}</p>
+            <p className="text-xs text-muted-foreground">{analysis.model === 'connector' ? 'Written by Claude or ChatGPT (connector)' : 'Preview by Ollama'}</p>
             <div className="flex flex-wrap items-center gap-2 font-medium">
-              Worth learning? <Badge variant="secondary">{review ? review.score : analysis.score}/10</Badge>
-              {review && <Badge className={review.verdict === 'learn' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}>Gemini: {review.verdict}</Badge>}
+              Worth learning? <Badge variant="secondary">{analysis.score}/10</Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{review ? review.reason : analysis.reason}</p>
+            <p className="text-sm text-muted-foreground">{analysis.reason}</p>
           </div>
-          {review && review.issues.length > 0 && <ul className="list-disc pl-5 text-sm text-amber-900">{review.issues.map(issue => <li key={issue}>{issue}</li>)}</ul>}
           <div className="grid gap-1.5">
             <Label htmlFor="phrase">Card</Label>
             <Textarea id="phrase" value={draft.phrase} onChange={event => setDraft(current => ({ ...current, phrase: event.target.value }))} className="min-h-10" />
@@ -148,9 +128,7 @@ function LearnFlow({ candidate, close }: { candidate: Candidate | null; close: (
           <More label="Meaning and notes"><p className="leading-relaxed whitespace-pre-wrap">{plain(draft.explanation)}</p></More>
           <DialogFooter>
             <Button variant="secondary" disabled={busy !== null} onClick={skip}>Skip</Button>
-            {review
-              ? <Button className="bg-emerald-700 hover:bg-emerald-700/85" disabled={busy !== null || !draft.phrase.trim()} onClick={learn}>{busy === 'save' ? 'Saving…' : 'Learn it'}</Button>
-              : <Button disabled={busy !== null} onClick={askGemini}>{busy === 'review' ? 'Gemini is checking…' : 'I want it: ask Gemini'}</Button>}
+            <Button className="bg-emerald-700 hover:bg-emerald-700/85" disabled={busy !== null || !draft.phrase.trim()} onClick={learn}>{busy === 'save' ? 'Saving…' : 'Learn it'}</Button>
           </DialogFooter>
         </div>
       )}

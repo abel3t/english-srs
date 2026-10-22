@@ -10,7 +10,7 @@ function speakWithBrowser(text: string, rate: number) {
   speechSynthesis.speak(utterance);
 }
 
-// Plays the saved Gemini clip for a sentence; falls back to the free browser voice when the clip cannot be made.
+// Plays the saved Aura-2 clip for a sentence; falls back to the free browser voice when the clip cannot be made.
 export function useClip() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle');

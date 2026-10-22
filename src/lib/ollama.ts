@@ -1,13 +1,16 @@
 import type { Bindings } from '../bindings';
 import { OLLAMA_MODEL } from '../constants';
+import { getApiKey } from './settings';
 
 type OllamaResponse = { response?: string; error?: string };
 
 export async function generateWithOllama(env: Bindings, prompt: string): Promise<string> {
+  const apiKey = await getApiKey(env, 'ollama');
+  if (!apiKey) throw new Error('No Ollama API key. Add one in Settings.');
   const baseUrl = (env.OLLAMA_BASE_URL || 'https://ollama.com').replace(/\/$/, '');
   const response = await fetch(`${baseUrl}/api/generate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.OLLAMA_API_KEY}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({ model: OLLAMA_MODEL, prompt, stream: false, options: { temperature: 0.2 } }),
   });
   const body = await response.json() as OllamaResponse;

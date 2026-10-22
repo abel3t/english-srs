@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { Bindings } from '../bindings';
-import { CLIP_VERSION, CONVERSATION_SPEAKERS, OLLAMA_MODEL, STORY_VOICE, getStoryPrompt, type StoryKind } from '../constants';
+import { CLIP_VERSION, CONVERSATION_SPEAKERS, OLLAMA_MODEL, getStoryPrompt, type StoryKind } from '../constants';
 import { getCard, getUnmemorizedCards, type Card } from './cards-db';
-import { synthesizeSpeech } from './gemini';
 import { generateWithOllama } from './ollama';
+import { speakStory } from './speech';
 
 export type StoryLine = { speaker: string | null; text: string };
 export type Story = { id: number; kind: StoryKind; title: string; lines: StoryLine[]; phrases: string[]; hasAudio: boolean; createdAt: string };
@@ -75,15 +75,13 @@ export async function deleteStory(env: Bindings, id: number): Promise<boolean> {
   return true;
 }
 
-// Audio is made on first play (one Gemini call per story) and then served from R2.
+// Audio is made on first play (ElevenLabs, or Aura-2 when its credits are used up) and then served from R2.
 export async function getStoryAudio(env: Bindings, story: Story): Promise<{ body: ReadableStream | Uint8Array<ArrayBuffer>; contentType: string }> {
   const key = `stories/${story.id}-v${CLIP_VERSION}`;
   const cached = await env.AUDIO.get(key);
-  if (cached) return { body: cached.body, contentType: cached.httpMetadata?.contentType ?? 'audio/wav' };
-  const audio = story.kind === 'conversation'
-    ? await synthesizeSpeech(env, story.lines.map(line => ({ speaker: line.speaker ?? CONVERSATION_SPEAKERS[0].name, text: line.text })), 'conversation')
-    : await synthesizeSpeech(env, story.lines.map(line => line.text).join(' '), { single: STORY_VOICE });
-  await env.AUDIO.put(key, audio.bytes, { httpMetadata: { contentType: audio.contentType } });
+  if (cached) return { body: cached.body, contentType: cached.httpMetadata?.contentType ?? 'audio/mpeg' };
+  const audio = await speakStory(env, story.lines);
+  await env.AUDIO.put(key, audio.bytes, { httpMetadata: { contentType: audio.contentType }, customMetadata: { provider: audio.provider } });
   await env.DB.prepare('UPDATE stories SET audio_key = ?1 WHERE id = ?2').bind(key, story.id).run();
   return { body: audio.bytes, contentType: audio.contentType };
 }

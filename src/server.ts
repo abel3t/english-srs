@@ -3,13 +3,13 @@ import { api } from './api/app';
 import type { Bindings } from './bindings';
 import { runBookExtraction } from './lib/book-extraction';
 
-// The JSON API runs on Hono; every other request renders the React app.
+// The JSON API and the MCP connector run on Hono; every other request renders the React app.
 const apiPaths = new Set(['/health']);
 
 export default {
   async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
-    const response = pathname.startsWith('/api/') || apiPaths.has(pathname)
+    const response = pathname.startsWith('/api/') || pathname === '/mcp' || pathname.startsWith('/mcp/') || apiPaths.has(pathname)
       ? await api.fetch(request, env, ctx)
       : await handler.fetch(request);
     const secured = new Response(response.body, response);

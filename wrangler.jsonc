@@ -21,6 +21,8 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Workers AI: Deepgram Aura-2 speech for clips (free daily allowance).
+  "ai": { "binding": "AI" },
   "r2_buckets": [
     {
       "binding": "AUDIO",

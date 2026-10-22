@@ -1,3 +1,4 @@
+import type { Analysis } from './learning-analysis';
 import { normalizeText, startOfLearningDay } from './text';
 
 export type CandidateKind = 'frame' | 'phrasal_verb' | 'idiom' | 'prep_phrase' | 'collocation' | 'word' | 'ai' | 'capture';
@@ -5,16 +6,18 @@ export type CandidateStatus = 'pending' | 'learned' | 'dismissed';
 export type Candidate = {
   id: number; phrase: string; example: string | null; meaning: string | null; source: string | null;
   kind: CandidateKind; band: number; score: number; status: CandidateStatus; aiRank: number | null; aiReason: string | null; createdAt: string;
+  // A card written ahead of time through the connector (Claude or ChatGPT); Learn opens it without a preview.
+  draft: Analysis | null;
 };
 export type NewCandidate = { phrase: string; example?: string | null; meaning?: string | null; source?: string | null; kind: CandidateKind; band?: number; score?: number; partId?: number | null; aiRank?: number | null; aiReason?: string | null };
 
 type CandidateRow = {
   id: number; phrase: string; example: string | null; meaning: string | null; source: string | null; kind: CandidateKind;
-  band: number; score: number; status: CandidateStatus; ai_rank: number | null; ai_reason: string | null; created_at: string;
+  band: number; score: number; status: CandidateStatus; ai_rank: number | null; ai_reason: string | null; created_at: string; draft: string | null;
 };
 const fromRow = (row: CandidateRow): Candidate => ({
   id: row.id, phrase: row.phrase, example: row.example, meaning: row.meaning, source: row.source, kind: row.kind,
-  band: row.band, score: row.score, status: row.status, aiRank: row.ai_rank, aiReason: row.ai_reason, createdAt: row.created_at,
+  band: row.band, score: row.score, status: row.status, aiRank: row.ai_rank, aiReason: row.ai_reason, createdAt: row.created_at, draft: row.draft ? JSON.parse(row.draft) : null,
 });
 
 // Skips phrases that are already candidates (any status) or already saved as cards.
@@ -79,4 +82,9 @@ export async function setAiPicks(db: D1Database, picks: Array<{ id: number; rank
   if (!picks.length) return;
   const update = db.prepare('UPDATE candidates SET ai_rank = ?1, ai_reason = ?2 WHERE id = ?3');
   await db.batch(picks.map(pick => update.bind(pick.rank, pick.reason, pick.id)));
+}
+
+export async function setCandidateDraft(db: D1Database, id: number, draft: Analysis): Promise<boolean> {
+  const result = await db.prepare("UPDATE candidates SET draft = ?1 WHERE id = ?2 AND status = 'pending'").bind(JSON.stringify(draft), id).run();
+  return (result.meta.changes ?? 0) > 0;
 }

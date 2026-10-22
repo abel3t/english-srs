@@ -81,6 +81,7 @@ function Suggestion({ candidate, onLearn }: { candidate: Candidate; onLearn: () 
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold">{candidate.phrase}</span>
         <Badge variant="secondary">{kindLabels[candidate.kind]}</Badge>
+        {candidate.draft && <Badge className="bg-emerald-100 text-emerald-800">Card ready</Badge>}
         <div className="ml-auto flex gap-1">
           <Button size="sm" onClick={onLearn}>Learn?</Button>
           <Button size="sm" variant="ghost" disabled={busy} onClick={skip}>Skip</Button>

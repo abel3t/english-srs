@@ -5,13 +5,14 @@ import type { Bindings } from '../bindings';
 import { MAX_CLIP_CHARS, OLLAMA_MODEL, PROMPT_VERSION } from '../constants';
 import { addParts, createBook, deleteBook, partIdsByPosition } from '../lib/books-db';
 import { addCandidates, setCandidateStatus } from '../lib/candidates-db';
-import { reviewCardWithGemini } from '../lib/card-review';
 import { deleteCard, getCard, getDailyStats, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
 import { getClip, normalizeClipText } from '../lib/clips';
 import { analyzeLearningInput } from '../lib/learning-analysis';
 import { formatInterval, nextSchedule, ratings } from '../lib/srs';
+import { connectorCreatedAt, createConnectorToken, getKeyStatuses, isConnectorToken, providers, removeConnectorToken, setApiKey } from '../lib/settings';
 import { createStory, deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
 import { countWords } from '../lib/text';
+import { handleMcp } from './mcp';
 
 export const api = new Hono<{ Bindings: Bindings }>();
 
@@ -37,12 +38,6 @@ const analyzeSchema = z.object({
   text: z.string().trim().min(1).max(3000), context: z.string().trim().max(1500).optional(),
   confusingPart: z.string().trim().max(500).optional(), intendedMeaning: z.string().trim().max(1000).optional(),
 });
-const reviewSchema = z.object({
-  text: z.string().trim().min(1).max(3000), context: z.string().trim().max(1500).optional(),
-  mainSentence: z.string().trim().min(1).max(1000), meaning: z.string().trim().max(2000).default(''),
-  keyExpression: z.string().trim().max(300).default(''), explanation: z.string().trim().max(6000).default(''),
-  examples: examplesSchema, score: z.number().min(0).max(10).default(5),
-});
 const cardSchema = z.object({
   phrase: z.string().trim().min(1).max(1000), explanation: z.string().trim().min(1).max(6000),
   keyExpression: z.string().trim().max(300).default(''), grammarPattern: z.string().trim().max(300).default(''),
@@ -65,6 +60,7 @@ const candidateBatchSchema = z.object({
     band: z.number().int().min(0).max(3), score: z.number().min(-5).max(20),
   })).min(1).max(100),
 });
+const keySchema = z.object({ key: z.string().trim().min(8).max(500) });
 const storySchema = z.object({
   cardIds: z.array(z.number().int().positive()).max(15).default([]),
   topic: z.string().trim().max(300).optional(),
@@ -93,10 +89,7 @@ api.post('/api/analyze', async c => {
   return c.json({ analysis: await analyzeLearningInput(c.env, input) });
 });
 
-// Step 2: Gemini reviews Ollama's card, only for phrases the learner wants to keep. Nothing is stored.
-api.post('/api/analyze/review', async c => c.json({ review: await reviewCardWithGemini(c.env, reviewSchema.parse(await c.req.json())) }));
-
-// Step 3: the learner decided to learn it — store the card in the review schedule.
+// Step 2: the learner decided to learn it — store the card in the review schedule.
 api.post('/api/cards', async c => {
   const input = cardSchema.parse(await c.req.json());
   const card = await insertCard(c.env.DB, {
@@ -176,4 +169,34 @@ api.get('/api/stories/:id/audio', async c => {
 api.delete('/api/stories/:id', async c => {
   if (!await deleteStory(c.env, idParam(c.req.param('id')))) throw new ApiError(404, 'Not found', 'Story was not found.');
   return c.json({ deleted: true });
+});
+
+// Settings: API keys are write-only (only the last 4 characters come back).
+const providerParam = (value: string) => {
+  const provider = providers.find(item => item === value);
+  if (!provider) throw new ApiError(404, 'Not found', 'Unknown provider.');
+  return provider;
+};
+
+api.get('/api/settings', async c => c.json({ keys: await getKeyStatuses(c.env), connectorCreatedAt: await connectorCreatedAt(c.env.DB) }));
+
+api.put('/api/settings/keys/:provider', async c => {
+  await setApiKey(c.env.DB, providerParam(c.req.param('provider')), keySchema.parse(await c.req.json()).key);
+  return c.json({ keys: await getKeyStatuses(c.env) });
+});
+
+api.delete('/api/settings/keys/:provider', async c => {
+  await setApiKey(c.env.DB, providerParam(c.req.param('provider')), null);
+  return c.json({ keys: await getKeyStatuses(c.env) });
+});
+
+// A new connector link replaces the old one; the full link is only returned here, once.
+api.post('/api/settings/connector', async c => c.json({ url: `${new URL(c.req.url).origin}/mcp/${await createConnectorToken(c.env.DB)}` }, 201));
+api.delete('/api/settings/connector', async c => { await removeConnectorToken(c.env.DB); return c.json({ deleted: true }); });
+
+// MCP connector for Claude and ChatGPT. The token is in the link (ChatGPT cannot send custom headers) or a Bearer header.
+api.all('/mcp/:token?', async c => {
+  const token = c.req.param('token') ?? c.req.header('Authorization')?.replace(/^Bearer\s+/i, '') ?? '';
+  if (!await isConnectorToken(c.env.DB, token)) return c.json({ error: 'Unauthorized', message: 'Unknown connector link. Create a new one in Settings.' }, 401);
+  return handleMcp(c.env, c.req.raw);
 });

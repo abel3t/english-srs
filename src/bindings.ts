@@ -1,11 +1,3 @@
-declare global {
-  namespace Cloudflare {
-    // Secrets are not in wrangler.jsonc, so `wrangler types` cannot see them.
-    interface Env {
-      OLLAMA_API_KEY: string;
-      GEMINI_API_KEY: string;
-    }
-  }
-}
-
+// Secrets (OLLAMA_API_KEY, ELEVENLABS_API_KEY) are typed from .dev.vars.example by `pnpm cf-typegen`. Both are
+// optional fallbacks: keys set on the Settings page (D1) are used first.
 export type Bindings = Cloudflare.Env;
