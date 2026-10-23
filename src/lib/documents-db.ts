@@ -86,6 +86,12 @@ export async function previewDocument(db: D1Database, userId: string, id: number
   return { start: start.results[0] ?? null, next: next.results[0] ?? null };
 }
 
+// False when the document is not this user's.
+export async function renameDocument(db: D1Database, userId: string, id: number, title: string): Promise<boolean> {
+  const result = await db.prepare('UPDATE Documents SET title = ?1 WHERE id = ?2 AND userId = ?3').bind(title, id, userId).run();
+  return result.meta.changes > 0;
+}
+
 // Removes the text and its cards still waiting in the Queue; learned cards stay.
 export async function deleteDocument(db: D1Database, userId: string, id: number): Promise<boolean> {
   const [, deleted] = await db.batch([

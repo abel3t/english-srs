@@ -8,7 +8,6 @@ import { SpeedControl } from '@/components/speed-control';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Equalizer } from '@/components/equalizer';
 import { PracticeSetupDialog, type PracticeMode } from '@/components/practice-setup-dialog';
-import { StatusMessage, type Status } from '@/components/status-message';
 import { More } from '@/components/more';
 import { TypingBox, type TypingHandle, type TypingResult } from '@/components/typing-box';
 import { Button } from '@/components/ui/button';
@@ -22,6 +21,7 @@ import { player, sentenceTrack } from '@/lib/player';
 import { blankSpans } from '@/lib/practice';
 import type { Rating } from '@/lib/srs';
 import type { Story } from '@/lib/stories';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/practice')({
   validateSearch: z.object({
@@ -92,16 +92,16 @@ function pickTexts(card: PracticeCard, source: Source): string[] {
 function CardPractice({ blank, source }: { blank: boolean; source: Source }) {
   const [cards, setCards] = useState<PracticeCard[] | null>(null);
   const [done, setDone] = useState(0);
-  const [status, setStatus] = useState<Status>(null);
+  const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     try { setCards((await apiRequest<{ cards: PracticeCard[] }>('/api/practice/due')).cards); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    catch (error) { toast.error(errorMessage(error)); setFailed(true); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
   const card = cards?.[0];
-  if (status) return <StatusMessage status={status} />;
+  if (failed) return <p className="text-sm text-muted-foreground">Could not load the cards. Reload the page to try again.</p>;
   if (!cards) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (!card) {
     return (
@@ -121,7 +121,7 @@ function CardPractice({ blank, source }: { blank: boolean; source: Source }) {
     setDone(count => count + 1);
     setCards(current => [...(current ?? []).slice(1), ...(again ? [next] : [])]);
   };
-  const onError = (text: string) => setStatus({ type: 'error', text });
+  const onError = (text: string) => toast.error(text);
   // A new card is drilled first; a learned one is reviewed and rated.
   return card.isNew
     ? <DrillItem key={`${card.id}-${done}-${blank}`} card={card} blank={blank} remaining={cards.length} onLearned={onAnswered} onError={onError} />
@@ -138,7 +138,10 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<TypingResult | null>(null);
   const [results, setResults] = useState<TypingResult[]>([]);
+  // Which texts have been typed: after a long gap every one of them is, before the card is rated.
+  const [typed, setTyped] = useState<Set<number>>(new Set());
   const text = texts[turn];
+  const ready = card.typeAll ? typed.size >= texts.length : results.length > 0;
   const accuracy = results.length ? results.reduce((sum, item) => sum + item.accuracy, 0) / results.length : undefined;
   const restart = useCallback((next: number) => { setTurn((next + texts.length) % texts.length); setAttempt(count => count + 1); setResult(null); }, [texts.length]);
   const [busy, setBusy] = useState(false);
@@ -176,11 +179,11 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
       if (!result) return;
       if (event.key === 'Enter') { event.preventDefault(); restart(turn); return; }
       const choice = confidence[Number(event.key) - 1];
-      if (choice) { event.preventDefault(); void answer(choice.rating); }
+      if (choice && ready) { event.preventDefault(); void answer(choice.rating); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [result, busy, answer, restart, turn, texts.length, play, text]);
+  }, [result, ready, busy, answer, restart, turn, texts.length, play, text]);
 
   return (
     <Card className={NEXT_CARD}>
@@ -211,7 +214,7 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
             <div role="tablist" aria-label="Text to type" className="flex max-w-full overflow-x-auto rounded-full bg-muted p-0.5 [scrollbar-width:none]">
               {texts.map((_, index) => (
                 <button key={index} type="button" role="tab" aria-selected={index === turn} disabled={busy} onClick={() => restart(index)}
-                  className={`h-7 shrink-0 rounded-full px-3 text-xs font-medium whitespace-nowrap transition-colors ${index === turn ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
+                  className={`h-7 shrink-0 rounded-full px-3 text-xs font-medium whitespace-nowrap transition-colors ${index === turn ? 'bg-background text-foreground shadow-sm' : card.typeAll && typed.has(index) ? 'text-emerald-700' : 'text-muted-foreground hover:text-foreground'}`}>
                   {source === 'mixed' && index === 0 ? 'Phrase' : <><span className="sm:hidden">Ex {source === 'mixed' ? index : index + 1}</span><span className="hidden sm:inline">{nameOf(index)}</span></>}
                 </button>
               ))}
@@ -220,7 +223,7 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
           </div>
         )}
         <div key={attempt} className="animate-in fade-in duration-200 motion-reduce:animate-none">
-          <TypingBox text={text} blanks={blanks} onDone={typed => { recordTyping(text, typed.accuracy); setResult(typed); setResults(all => [...all, typed]); }} />
+          <TypingBox text={text} blanks={blanks} onDone={typed => { recordTyping(text, typed.accuracy); setResult(typed); setResults(all => [...all, typed]); setTyped(done => new Set(done).add(turn)); }} />
         </div>
         {result && (
           <div className={`flex flex-wrap items-center justify-between gap-2 ${APPEAR}`}>
@@ -231,7 +234,12 @@ function CardItem({ card, blank, source, remaining, onAnswered, onError }: {
             <Button variant="outline" size="sm" disabled={busy} onClick={() => restart(turn)}>Type it again<kbd className="ml-1 hidden text-xs opacity-70 sm:inline">Enter</kbd></Button>
           </div>
         )}
-        {results.length > 0 && (
+        {card.typeAll && results.length > 0 && !ready && (
+          <p className={`text-sm text-muted-foreground ${APPEAR}`}>
+            Not seen for a while: type every text once ({typed.size} of {texts.length} done), then rate it. <kbd>Tab</kbd> goes to the next one.
+          </p>
+        )}
+        {ready && (
           <>
             <More label="Meaning and notes">
               <p className="leading-relaxed whitespace-pre-wrap">{card.explanation.replace(/\*\*([^*]+)\*\*/g, '$1')}</p>

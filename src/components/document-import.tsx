@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
 import { FILE_TYPES, chunkChapter, parseDocument, parseText, type Chapter, type ParsedDocument } from '@/lib/document-parser';
+import { toast } from 'sonner';
 
 type Progress = { label: string; done: number; total: number };
 // `chapter` is the index in the chosen chapters (titles can repeat); it is not sent to the server.
@@ -33,7 +35,9 @@ export function ImportDialog({ open, onOpenChange }: { open: boolean; onOpenChan
 function DocumentImport({ close }: { close: () => void }) {
   const router = useRouter();
   const [source, setSource] = useState<'file' | 'text'>('file');
-  const [pastedTitle, setPastedTitle] = useState('');
+  // What the document is called in the Library: the file's title or name to start with (pasted text starts empty so it
+  // is always named), editable before saving.
+  const [name, setName] = useState('');
   const [pasted, setPasted] = useState('');
   const [doc, setDoc] = useState<ParsedDocument | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -51,7 +55,7 @@ function DocumentImport({ close }: { close: () => void }) {
   function opened(parsed: ParsedDocument) {
     if (!parsed.chapters.length) throw new Error(parsed.format === 'pdf' ? 'No readable text was found. Scanned PDFs (images of pages) are not supported.' : 'No readable text was found.');
     const indices = parsed.chapters.map((_, index) => index).filter(index => !/^(front matter|contents|index|copyright|acknowledg)/i.test(parsed.chapters[index].title));
-    setDoc(parsed); setSelected(new Set(indices)); setStatus(null);
+    setDoc(parsed); setName(parsed.format === 'text' ? '' : parsed.title); setSelected(new Set(indices)); setStatus(null);
     if (parsed.format === 'text' || parsed.chapters.length === 1) showPreview(parsed.chapters);
   }
 
@@ -59,13 +63,13 @@ function DocumentImport({ close }: { close: () => void }) {
     if (!file) return;
     setDoc(null); setPreview(null); setProgress(null); setSummary(null); setStatus({ type: 'info', text: `Reading ${file.name} in your browser…` });
     try { opened(await parseDocument(file)); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    catch (error) { toast.error(errorMessage(error)); }
   }
 
   function openText() {
     setSummary(null);
-    try { opened(parseText(pastedTitle, pasted)); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    try { opened(parseText('', pasted)); }
+    catch (error) { toast.error(errorMessage(error)); }
   }
 
   function toggle(index: number) {
@@ -75,16 +79,17 @@ function DocumentImport({ close }: { close: () => void }) {
   function showPreview(chapters = chosen) {
     const parts = chapters.flatMap((chapter, index) => chunkChapter(chapter.text, PART_WORDS).map(text => ({ chapter: index, chapterTitle: chapter.title, text, words: text.split(/\s+/).filter(Boolean).length })))
       .map((part, position) => ({ ...part, position }));
-    if (!parts.length) { setStatus({ type: 'error', text: 'There is no prose to read here (code, tables and lists of short lines are left out).' }); return; }
+    if (!parts.length) { toast.error('There is no prose to read here (code, tables and lists of short lines are left out).'); return; }
     setStatus(null); setPreview({ chapters, parts }); setShown(String(parts[0].chapter));
   }
 
   async function save() {
-    if (!doc || !preview) return;
-    const parts = preview.parts.map(({ chapter: _chapter, ...part }) => part);
+    if (!doc || !preview || !name.trim()) return;
+    // Pasted text has no title of its own: its first section takes the chosen name.
+    const parts = preview.parts.map(({ chapter: _chapter, ...part }) => (doc.format === 'text' && part.chapterTitle === doc.title ? { ...part, chapterTitle: name.trim() } : part));
     setRunning(true); setStatus(null); setSummary(null);
     try {
-      const { documentId } = await postJson<{ documentId: number }>('/api/documents', { title: doc.title, author: doc.author ?? undefined, format: doc.format });
+      const { documentId } = await postJson<{ documentId: number }>('/api/documents', { title: name.trim(), author: doc.author ?? undefined, format: doc.format });
       try {
         for (let start = 0; start < parts.length; start += 20) {
           setProgress({ label: 'Saving the text', done: start, total: parts.length });
@@ -97,7 +102,7 @@ function DocumentImport({ close }: { close: () => void }) {
       }
       setSummary({ parts: parts.length, words: parts.reduce((total, part) => total + part.words, 0) });
       setProgress(null);
-    } catch (error) { setStatus({ type: 'error', text: `${errorMessage(error)} Nothing was saved; please try again.` }); setProgress(null); }
+    } catch (error) { toast.error(`${errorMessage(error)} Nothing was saved; please try again.`); setProgress(null); }
     finally { setRunning(false); await router.invalidate(); }
   }
 
@@ -114,6 +119,10 @@ function DocumentImport({ close }: { close: () => void }) {
 
       {preview && !summary && (
         <div className="grid gap-3 text-sm">
+          <div className="grid gap-1.5">
+            <Label htmlFor="import-name">Name</Label>
+            <Input id="import-name" autoFocus={doc?.format === 'text'} value={name} maxLength={300} disabled={running} onChange={event => setName(event.target.value)} placeholder="e.g. Team retro notes" className="bg-background" />
+          </div>
           <p>
             <span className="font-medium">{parts.reduce((total, part) => total + part.words, 0).toLocaleString()} words</span>
             {chapters.length > 1 && <span className="text-muted-foreground"> from {new Set(parts.map(part => part.chapter)).size} of {chapters.length} chapters</span>}
@@ -143,7 +152,7 @@ function DocumentImport({ close }: { close: () => void }) {
           )}
           <DialogFooter>
             <Button variant="secondary" disabled={running} onClick={back}>Back</Button>
-            <Button disabled={running} onClick={save}>{running ? 'Saving…' : 'Looks good: save'}</Button>
+            <Button disabled={running || !name.trim()} onClick={save}>{running ? 'Saving…' : 'Looks good: save'}</Button>
           </DialogFooter>
         </div>
       )}
@@ -164,7 +173,6 @@ function DocumentImport({ close }: { close: () => void }) {
 
           {source === 'text' && (
             <>
-              <Input value={pastedTitle} onChange={event => setPastedTitle(event.target.value)} placeholder="Title (e.g. Team retro notes)" className="bg-background" />
               <Textarea value={pasted} onChange={event => setPasted(event.target.value)} placeholder="Paste or type English text: an article, an email thread, a transcript…"
                 className="min-h-48 bg-background" />
               <p className="text-xs text-muted-foreground">Leave a blank line between paragraphs. A line starting with “# ” starts a new section.</p>

@@ -9,7 +9,7 @@ import { player, usePlayer } from '@/lib/player';
 // The listening player at the bottom of every page, shown while it has something to play. On phones it sits just
 // above the tab bar; on larger screens it floats at the bottom with a seek bar.
 export function MiniPlayer() {
-  const { tracks, index, status, loop, time, duration, error } = usePlayer();
+  const { tracks, index, status, loop, time, duration } = usePlayer();
   if (!tracks.length) return null;
   const track = tracks[index];
   const playing = status === 'playing';
@@ -49,7 +49,6 @@ export function MiniPlayer() {
           <X className="size-4" aria-hidden />
         </Button>
       </div>
-      {error && <p role="alert" className="px-4 pb-2 text-xs text-destructive">{error}</p>}
       <div className="hidden items-center gap-2 px-4 pb-2.5 sm:flex">
         <span className="w-10 shrink-0 text-right font-mono text-[11px] whitespace-nowrap text-muted-foreground tabular-nums">{formatTime(time)}</span>
         <Slider min={0} max={known ? duration : 1} step={0.1} value={[known ? Math.min(time, duration) : 0]} disabled={!known} aria-label="Position"

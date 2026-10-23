@@ -1,6 +1,5 @@
 import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
 import { useState, type FormEvent } from 'react';
-import { StatusMessage, type Status } from '@/components/status-message';
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +9,7 @@ import { prepareSignIn } from '@/data/cards';
 import { authClient, unwrap } from '@/lib/auth-client';
 import { forgetViewer } from '@/lib/viewer-cache';
 import { errorMessage } from '@/lib/api-client';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/login')({
   // Already signed in: straight to Today.
@@ -24,17 +24,16 @@ function SignIn() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<Status>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setBusy(true); setStatus(null);
+    setBusy(true);
     try {
       await unwrap(authClient.signIn.email({ email: email.trim(), password }));
       forgetViewer();
       await router.invalidate();
       await router.navigate({ to: '/' });
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); setBusy(false); }
+    } catch (error) { toast.error(errorMessage(error)); setBusy(false); }
   }
 
   return (
@@ -56,7 +55,6 @@ function SignIn() {
               <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)} />
             </div>
             <Button type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
-            <StatusMessage status={status} />
           </form>
         </CardContent>
       </Card>

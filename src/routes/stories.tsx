@@ -1,14 +1,13 @@
 import { Link, createFileRoute, useRouter } from '@tanstack/react-router';
-import { useState } from 'react';
 import { Headphones } from 'lucide-react';
 import { Equalizer } from '@/components/equalizer';
 import { More } from '@/components/more';
-import { StatusMessage, type Status } from '@/components/status-message';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getStoriesPage } from '@/data/cards';
 import { apiRequest, errorMessage } from '@/lib/api-client';
 import { player, usePlayer, type Track } from '@/lib/player';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/stories')({
   loader: () => getStoriesPage(),
@@ -19,7 +18,6 @@ export const Route = createFileRoute('/stories')({
 function Stories() {
   const router = useRouter();
   const { stories, learning, hasElevenLabsKey } = Route.useLoaderData();
-  const [status, setStatus] = useState<Status>(null);
   // Stories with audio, or that can get it now (an ElevenLabs key is set), play in the mini player.
   const playable = stories.filter(story => story.hasAudio || hasElevenLabsKey);
   const trackOf = (story: (typeof stories)[number]): Track => ({ src: `/api/stories/${story.id}/audio`, title: story.title, subtitle: story.kind === 'conversation' ? 'Conversation' : 'Story', kind: 'story' });
@@ -29,7 +27,7 @@ function Stories() {
   async function remove(id: number) {
     if (!confirm('Delete this story and its audio?')) return;
     try { await apiRequest(`/api/stories/${id}`, { method: 'DELETE' }); await router.invalidate(); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    catch (error) { toast.error(errorMessage(error)); }
   }
 
   return (
@@ -45,7 +43,6 @@ function Stories() {
           </Button>
         )}
       </div>
-      <StatusMessage status={status} />
       {!stories.length && (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           {learning ? 'No stories yet.' : 'Stories are built from phrases you are learning. Learn a few from the Queue first.'}

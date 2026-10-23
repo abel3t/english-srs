@@ -11,6 +11,7 @@ import { getSettingsPage } from '@/data/cards';
 import { apiRequest, errorMessage, postJson } from '@/lib/api-client';
 import { authClient, unwrap } from '@/lib/auth-client';
 import type { KeyStatus, Provider } from '@/lib/settings';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/settings')({
   loader: () => getSettingsPage(),
@@ -56,7 +57,7 @@ function ApiKeyRow({ status: key }: { status: KeyStatus }) {
         : { method });
       setValue('');
       await router.invalidate();
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    } catch (error) { toast.error(errorMessage(error)); }
     finally { setBusy(false); }
   }
 
@@ -90,7 +91,7 @@ function Connector({ createdAt }: { createdAt: string | null }) {
     if (createdAt && !confirm('Create a new link? The old link stops working.')) return;
     setBusy(true); setStatus(null);
     try { setUrl((await postJson<{ url: string }>('/api/settings/connector')).url); await router.invalidate(); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    catch (error) { toast.error(errorMessage(error)); }
     finally { setBusy(false); }
   }
 
@@ -98,7 +99,7 @@ function Connector({ createdAt }: { createdAt: string | null }) {
     if (!confirm('Disconnect? Claude or ChatGPT can no longer use the app until you create a new link.')) return;
     setBusy(true);
     try { await apiRequest('/api/settings/connector', { method: 'DELETE' }); setUrl(null); await router.invalidate(); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    catch (error) { toast.error(errorMessage(error)); }
     finally { setBusy(false); }
   }
 
@@ -151,7 +152,7 @@ function ChangePassword() {
       await unwrap(authClient.changePassword({ currentPassword: current, newPassword: next, revokeOtherSessions: true }));
       setCurrent(''); setNext('');
       setStatus({ type: 'success', text: 'Password changed. Your other devices are signed out.' });
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    } catch (error) { toast.error(errorMessage(error)); }
     finally { setBusy(false); }
   }
 

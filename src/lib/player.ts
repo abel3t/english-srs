@@ -2,6 +2,7 @@
 // story's audio, that keeps playing while the learner moves between pages. Speed, one-sound-at-a-time and listening
 // time come from registerAudio, like every other player.
 import { useSyncExternalStore } from 'react';
+import { toast } from 'sonner';
 import { audioErrorMessage, clipUrl, registerAudio } from './audio';
 
 export type Track = {
@@ -13,9 +14,9 @@ export type Track = {
   kind: 'sentence' | 'story';
 };
 type PlayerStatus = 'idle' | 'loading' | 'playing' | 'paused';
-type PlayerSnapshot = { tracks: Track[]; index: number; status: PlayerStatus; loop: boolean; time: number; duration: number; error: string | null };
+type PlayerSnapshot = { tracks: Track[]; index: number; status: PlayerStatus; loop: boolean; time: number; duration: number };
 
-const EMPTY: PlayerSnapshot = { tracks: [], index: 0, status: 'idle', loop: false, time: 0, duration: Number.NaN, error: null };
+const EMPTY: PlayerSnapshot = { tracks: [], index: 0, status: 'idle', loop: false, time: 0, duration: Number.NaN };
 let snapshot = EMPTY;
 const listeners = new Set<() => void>();
 const update = (patch: Partial<PlayerSnapshot>) => { snapshot = { ...snapshot, ...patch }; for (const listener of listeners) listener(); };
@@ -92,9 +93,14 @@ function element(): HTMLAudioElement {
     if (!snapshot.tracks.length || !created.getAttribute('src')) return;
     // A story that could not be made says why (no key, refused, credits used up); the list goes on meanwhile.
     const failed = snapshot.tracks[snapshot.index];
-    if (failed?.kind === 'story') void audioErrorMessage(failed.src).then(message => { if (snapshot.tracks.includes(failed)) update({ error: `${failed.title}: ${message}` }); });
+    if (failed?.kind === 'story') void audioErrorMessage(failed.src).then(message => { if (snapshot.tracks.includes(failed)) toast.error(`${failed.title}: ${message}`); });
     failures += 1;
-    if (failures >= snapshot.tracks.length) { update({ status: 'paused' }); return; }
+    // Every sentence failed (e.g. the daily clip allowance is used up): say why instead of stopping silently.
+    if (failures >= snapshot.tracks.length) {
+      update({ status: 'paused' });
+      if (failed?.kind === 'sentence') void audioErrorMessage(failed.src).then(message => { if (snapshot.tracks.includes(failed)) toast.error(message, { id: 'clip' }); });
+      return;
+    }
     advance();
   });
   registerAudio(created);
@@ -133,7 +139,7 @@ export const player = {
   play(tracks: Track[], start = 0) {
     if (!tracks.length) return;
     failures = 0;
-    update({ tracks, error: null });
+    update({ tracks });
     load(start);
   },
   toggle() {

@@ -3,7 +3,7 @@ import { Headphones } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { ImportDialog } from '@/components/document-import';
 import { StateBadge } from '@/components/card-badges';
-import { StatusMessage, type Status } from '@/components/status-message';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -33,7 +33,6 @@ const filterOptions = [
 function Library() {
   const { totalCards, totalDocuments, pending } = Route.useLoaderData();
   const search = Route.useSearch();
-  const [status, setStatus] = useState<Status>(null);
   const [importing, setImporting] = useState(false);
   const tabs = [['cards', 'Cards', totalCards], ['imported', 'Imported', totalDocuments]] as const;
 
@@ -55,10 +54,9 @@ function Library() {
           </Link>
         ))}
       </nav>
-      <StatusMessage status={status} />
       {search.tab === 'cards'
-        ? <CardsTab onImport={() => setImporting(true)} onError={text => setStatus({ type: 'error', text })} />
-        : <ImportedTab onImport={() => setImporting(true)} onError={text => setStatus({ type: 'error', text })} />}
+        ? <CardsTab onImport={() => setImporting(true)} onError={text => toast.error(text)} />
+        : <ImportedTab onImport={() => setImporting(true)} onError={text => toast.error(text)} />}
     </>
   );
 }
@@ -212,6 +210,13 @@ function DocumentItem({ document, onError }: { document: DocumentSummary; onErro
     catch (error) { onError(errorMessage(error)); }
   }
 
+  async function rename() {
+    const title = prompt('Name', document.title)?.trim();
+    if (!title || title === document.title) return;
+    try { await apiRequest(`/api/documents/${document.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) }); await router.invalidate(); }
+    catch (error) { onError(errorMessage(error)); }
+  }
+
   async function remove() {
     if (!confirm(`Delete "${document.title}"? Its text and its new cards still waiting are removed; your learned cards stay.`)) return;
     try { await apiRequest(`/api/documents/${document.id}`, { method: 'DELETE' }); await router.invalidate(); }
@@ -242,8 +247,9 @@ function DocumentItem({ document, onError }: { document: DocumentSummary; onErro
               {preview.next && <Excerpt label="Read next" part={preview.next} />}
             </>
           )}
-        <div className="flex">
-          <Button variant="destructive" className="ml-auto" onClick={remove}>Delete</Button>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={rename}>Rename</Button>
+          <Button variant="destructive" onClick={remove}>Delete</Button>
         </div>
       </CollapsibleContent>
     </Collapsible>

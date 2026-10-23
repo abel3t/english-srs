@@ -26,9 +26,26 @@ function joinMp3(parts: Uint8Array[]): Audio {
 }
 
 // Deepgram Aura-2 on Workers AI: free within the daily Workers AI allowance. Used for phrase and sentence clips.
+// Its daily free allowance is used up: clips that are not saved yet cannot be made until it resets at 00:00 UTC.
+export class ClipLimitError extends Error {
+  constructor() { super('Today\'s free Workers AI allowance is used up, so new clips can be made again after 00:00 UTC (07:00 in Vietnam). Saved clips still play.'); }
+}
+
+const isLimit = (status: number, message: string) => status === 429 || /neurons|daily free allocation/i.test(message);
+
 async function aura(env: Bindings, text: string, speaker: Ai_Cf_Deepgram_Aura_2_En_Input['speaker']): Promise<Uint8Array> {
-  const response = await env.AI.run(AURA_MODEL, { text, speaker, encoding: 'mp3' }, { returnRawResponse: true });
-  if (!response.ok) throw new Error(`Aura-2 failed (${response.status}): ${(await response.text()).slice(0, 300)}`);
+  let response: Response;
+  try {
+    response = await env.AI.run(AURA_MODEL, { text, speaker, encoding: 'mp3' }, { returnRawResponse: true });
+  } catch (error) {
+    if (isLimit(0, String(error))) throw new ClipLimitError();
+    throw error;
+  }
+  if (!response.ok) {
+    const body = await response.text();
+    if (isLimit(response.status, body)) throw new ClipLimitError();
+    throw new Error(`Aura-2 failed (${response.status}): ${body.slice(0, 300)}`);
+  }
   return new Uint8Array(await response.arrayBuffer());
 }
 

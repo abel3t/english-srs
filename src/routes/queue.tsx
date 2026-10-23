@@ -2,7 +2,6 @@ import { Link, createFileRoute, useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useState } from 'react';
 import { More } from '@/components/more';
 import { PageHeader } from '@/components/page-header';
-import { StatusMessage, type Status } from '@/components/status-message';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +11,7 @@ import { getQueue } from '@/data/cards';
 import { errorMessage, postJson } from '@/lib/api-client';
 import type { Candidate, SkipReason } from '@/lib/candidates-db';
 import { findPhraseSpan } from '@/lib/practice';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/queue')({
   loader: () => getQueue(),
@@ -73,11 +73,10 @@ function Review({ candidate }: { candidate: Candidate }) {
   const [front, setFront] = useState(draft.front);
   const [examples, setExamples] = useState(draft.examples.join('\n'));
   const [busy, setBusy] = useState<Action | null>(null);
-  const [status, setStatus] = useState<Status>(null);
 
   const act = useCallback(async (action: Action) => {
     if (action === 'learn' && !front.trim()) return;
-    setStatus(null); setBusy(action);
+    setBusy(action);
     try {
       if (action === 'learn') {
         await postJson('/api/cards', {
@@ -89,7 +88,7 @@ function Review({ candidate }: { candidate: Candidate }) {
         await postJson(`/api/candidates/${candidate.id}/skip`, { reason: action });
       }
       await router.invalidate();
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); setBusy(null); }
+    } catch (error) { toast.error(errorMessage(error)); setBusy(null); }
   }, [candidate, draft, front, examples, router]);
 
   useEffect(() => {
@@ -143,7 +142,6 @@ function Review({ candidate }: { candidate: Candidate }) {
             Not useful<kbd className="ml-1 text-xs opacity-70">N</kbd>
           </Button>
         </div>
-        <StatusMessage status={status} />
       </CardContent>
     </Card>
   );

@@ -10,6 +10,15 @@ export const ratings: Rating[] = ['again', 'hard', 'good', 'easy'];
 // Typings of each text before a new card counts as learned.
 export const DRILL_TIMES = 10;
 
+// When a card turns 1, 3, 6 and 12 months old, its next review is rated only once every text (the phrase and each
+// example) is typed, so a phrase learned a while ago is not just skimmed; any other review needs one typing.
+const TYPE_ALL_AGES_DAYS = [30, 91, 182, 365];
+export function typeAllTexts(card: { createdAt: string; lastReviewedAt: string | null }, now = new Date()): boolean {
+  const age = (at: Date) => (at.getTime() - new Date(card.createdAt).getTime()) / 86_400_000;
+  const before = card.lastReviewedAt ? age(new Date(card.lastReviewedAt)) : 0;
+  return TYPE_ALL_AGES_DAYS.some(days => before < days && age(now) >= days);
+}
+
 const HOUR = 1 / 24;
 // Gaps in days after each step: 1 hour, 1 day, 3 days, a week, 2 weeks, a month, 2 months, then 4, 8 months, a year.
 export const LADDER = [HOUR, 1, 3, 7, 14, 30, 60, 120, 240, 365] as const;

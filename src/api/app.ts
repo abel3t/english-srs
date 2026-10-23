@@ -5,15 +5,15 @@ import type { Bindings } from '../bindings';
 import { MAX_CLIP_CHARS } from '../constants';
 import { recordActivities } from '../lib/activity-db';
 import { getAuth, getViewer } from '../lib/auth';
-import { DOCUMENT_FORMATS, addParts, createDocument, deleteDocument, previewDocument } from '../lib/documents-db';
+import { DOCUMENT_FORMATS, addParts, createDocument, deleteDocument, previewDocument, renameDocument } from '../lib/documents-db';
 import { decideCandidate, getCandidate, reopenCandidate } from '../lib/candidates-db';
 import { cardTexts, deleteCard, drillCard, getCard, getDueCards, insertCard, reviewCard, type Card } from '../lib/cards-db';
 import { getClip, normalizeClipText, prepareClips } from '../lib/clips';
-import { DRILL_TIMES, formatInterval, nextSchedule, ratings } from '../lib/srs';
+import { DRILL_TIMES, formatInterval, nextSchedule, ratings, typeAllTexts } from '../lib/srs';
 import { connectorUser, createConnectorToken, getKeyStatuses, providers, removeConnectorToken, setApiKey } from '../lib/settings';
 import { deleteStory, getStory, getStoryAudio, listStories } from '../lib/stories';
 import { handleMcp } from './mcp';
-import { ElevenLabsKeyError } from '../lib/speech';
+import { ClipLimitError, ElevenLabsKeyError } from '../lib/speech';
 
 // Every /api route but /api/auth/* works for the signed-in user (userId); the connector for its link's user.
 export const api = new Hono<{ Bindings: Bindings; Variables: { userId: string } }>();
@@ -24,6 +24,7 @@ class ApiError extends Error {
 
 api.onError((error, c) => {
   if (error instanceof ElevenLabsKeyError) return c.json({ error: 'ElevenLabs key needed', message: error.message }, 403);
+  if (error instanceof ClipLimitError) return c.json({ error: 'Daily limit reached', message: error.message }, 429);
   if (error instanceof z.ZodError) return c.json({ error: 'Validation error', message: error.errors.map(issue => issue.message).join(', ') }, 400);
   if (error instanceof ApiError) return c.json({ error: error.title, message: error.message }, error.status);
   console.error(`${c.req.method} ${c.req.path} failed`, error);
@@ -60,6 +61,7 @@ function toPracticeCard(card: Card) {
   return {
     id: card.id, phrase: card.phrase, keyExpression: card.keyExpression, explanation: card.explanation,
     isNew: card.state === 'new', drill: texts.map((_, index) => card.drill[index] ?? 0), drillTimes: DRILL_TIMES,
+    typeAll: typeAllTexts(card),
     texts,
     intervals: Object.fromEntries(ratings.map(rating => [rating, formatInterval(nextSchedule(card, rating).intervalDays)])) as Record<(typeof ratings)[number], string>,
   };
@@ -178,6 +180,12 @@ api.get('/api/documents/:id/preview', async c => {
   const preview = await previewDocument(c.env.DB, c.get('userId'), idParam(c.req.param('id')));
   if (!preview) throw new ApiError(404, 'Not found', 'Document was not found.');
   return c.json(preview);
+});
+
+api.patch('/api/documents/:id', async c => {
+  const { title } = documentSchema.pick({ title: true }).parse(await c.req.json());
+  if (!await renameDocument(c.env.DB, c.get('userId'), idParam(c.req.param('id')), title)) throw new ApiError(404, 'Not found', 'Document was not found.');
+  return c.json({ ok: true });
 });
 
 api.delete('/api/documents/:id', async c => {

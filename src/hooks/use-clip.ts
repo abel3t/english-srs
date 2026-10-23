@@ -1,19 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { clipUrl, getAudioSpeed, registerAudio } from '@/lib/audio';
+import { toast } from 'sonner';
+import { audioErrorMessage, clipUrl, registerAudio } from '@/lib/audio';
 import { describe } from '@/lib/player';
-
-function speakWithBrowser(text: string) {
-  if (typeof speechSynthesis === 'undefined') return;
-  speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US'; utterance.rate = getAudioSpeed();
-  speechSynthesis.speak(utterance);
-}
 
 type ClipState = 'idle' | 'loading' | 'playing';
 
-// Plays the saved Aura-2 clip for a sentence at the shared speed; falls back to the free browser voice when the clip
-// cannot be made. Starting it stops any other audio on the page.
+// Plays the saved Aura-2 clip for a sentence at the shared speed; when the clip cannot be made, a toast says why.
+// Starting it stops any other audio on the page.
 export function useClip() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [state, setState] = useState<ClipState>('idle');
@@ -46,7 +39,7 @@ export function useClip() {
       setState('idle');
       // Autoplay blocked: wait for a click instead of switching voices.
       if (error instanceof DOMException && (error.name === 'NotAllowedError' || error.name === 'AbortError')) return;
-      speakWithBrowser(text);
+      toast.error(await audioErrorMessage(src), { id: 'clip' });
     }
   }, [element]);
 

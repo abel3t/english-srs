@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { HeadContent, Scripts, createRootRoute, redirect } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
+import { Toaster } from 'sonner';
 import { AppNav } from '@/components/app-nav';
 import { MiniPlayer } from '@/components/mini-player';
 import { PageContent } from '@/components/page-pending';
@@ -51,6 +52,7 @@ function RootDocument({ children }: { children: ReactNode }) {
           <PageContent>{children}</PageContent>
         </div>
         {viewer && <MiniPlayer />}
+        <Toaster position="top-center" richColors closeButton />
         <Scripts />
       </body>
     </html>

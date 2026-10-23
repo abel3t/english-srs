@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { errorMessage } from '@/lib/api-client';
 import { authClient, unwrap } from '@/lib/auth-client';
+import { toast } from 'sonner';
 
 export const Route = createFileRoute('/admin')({
   // Superadmins only (role 'admin'); Better Auth checks the role again on every call.
@@ -25,13 +26,12 @@ type Account = { id: string; name: string; email: string; role?: string | null; 
 function Admin() {
   const { viewer } = Route.useRouteContext();
   const [accounts, setAccounts] = useState<Account[] | null>(null);
-  const [status, setStatus] = useState<Status>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await unwrap(authClient.admin.listUsers({ query: { limit: 200, sortBy: 'createdAt', sortDirection: 'desc' } }));
       setAccounts((data?.users ?? []) as Account[]);
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    } catch (error) { toast.error(errorMessage(error)); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -46,7 +46,6 @@ function Admin() {
             : accounts.map(account => <AccountRow key={account.id} account={account} self={account.id === viewer?.id} onChanged={load} />)}
         </CardContent>
       </Card>
-      <StatusMessage status={status} />
     </>
   );
 }
@@ -67,7 +66,7 @@ function CreateAccount({ onCreated }: { onCreated: () => Promise<void> }) {
       setStatus({ type: 'success', text: `Created ${email.trim()}. Give them their email and password; they can change the password in Settings.` });
       setName(''); setEmail(''); setPassword(''); setRole('user');
       await onCreated();
-    } catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    } catch (error) { toast.error(errorMessage(error)); }
     finally { setBusy(false); }
   }
 
@@ -105,7 +104,7 @@ function AccountRow({ account, self, onChanged }: { account: Account; self: bool
   async function run(action: () => Promise<unknown>, done: string) {
     setBusy(true); setStatus(null);
     try { await action(); setStatus({ type: 'success', text: done }); await onChanged(); }
-    catch (error) { setStatus({ type: 'error', text: errorMessage(error) }); }
+    catch (error) { toast.error(errorMessage(error)); }
     finally { setBusy(false); }
   }
 
